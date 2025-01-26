@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+# dhを使用する場合、この行は必要です
+%:
+	dh $@
+
+# 必要に応じて Systemd の設定を処理する
+binary-install/change-ui::
+	dh_installsystemd
+	install -d $(DEB_DESTDIR)/usr/bin/
+	install -pm 755 change-ui $(DEB_DESTDIR)/usr/bin/
+	install -d $(DEB_DESTDIR)/usr/share/applications/
+	install -pm 644 change-ui $(DEB_DESTDIR)/usr/share/applications/
+
+override_dh_installman:
+	dh_installman debian/change-ui.1
+
