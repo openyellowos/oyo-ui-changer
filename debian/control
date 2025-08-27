@@ -1,0 +1,14 @@
+Source: oyo-ui-changer
+Section: admin
+Priority: optional
+Maintainer: open.Yellow.os <admin@openyellowos.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/openyellowos/oYo-ui-changer
+
+Package: oyo-ui-changer
+Architecture: all
+Depends: ${misc:Depends}, zenity, bash, coreutils, xdg-utils
+Description: oYo UI changer (Zenity-based)
+ Simple UI changer for open.Yellow.os using Zenity dialogs.

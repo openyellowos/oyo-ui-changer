@@ -1,0 +1,15 @@
+# Debian パッケージ生成物
+*.deb
+*.dsc
+*.build
+*.buildinfo
+*.changes
+*.tar.*
+
+# dpkg-buildpackage で生成される一時ファイル
+debian/*.debhelper.log
+debian/*.substvars
+debian/files
+debian/*debhelper-build-stamp
+debian/tmp/
+

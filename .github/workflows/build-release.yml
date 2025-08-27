@@ -1,0 +1,31 @@
+name: Build & Release .deb
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y devscripts debhelper-compat
+
+      - name: Build
+        run: |
+          dpkg-buildpackage -us -uc
+          ls -l ..
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ../*.deb
+            ../*.changes
+            ../*.buildinfo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

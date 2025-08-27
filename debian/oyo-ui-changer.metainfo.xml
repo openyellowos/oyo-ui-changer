@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.openyellowos.oyo-ui-changer</id>
+  <name>oYo UI Changer</name>
+  <summary>Switch and adjust UI presets for oYo</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>A small tool to switch/adjust UI settings on oYo.</p>
+  </description>
+  <launchable type="desktop-id">oyoui-changer.desktop</launchable>
+  <releases>
+    <release version="1.0" date="2025-08-25"/>
+  </releases>
+  <provides>
+    <binary>oyo-ui-changer</binary>
+  </provides>
+  <url type="homepage">https://github.com/openyellowos/oYo-ui-changer</url>
+  <developer_name>open.Yellow.os</developer_name>
+</component>
+

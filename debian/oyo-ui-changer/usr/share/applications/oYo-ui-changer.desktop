@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=oYo UI Changer
+GenericName=UI Changer
+Comment=Change desktop UI settings on open.Yellow.os
+Exec=oyo-ui-changer
+Icon=oyo-ui-changer
+Terminal=false
+Categories=Settings;Utility;

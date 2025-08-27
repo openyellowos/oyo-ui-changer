@@ -1,0 +1,11 @@
+Package: oyo-ui-changer
+Version: 1.0
+Architecture: all
+Maintainer: open.Yellow.os <admin@openyellowos.com>
+Installed-Size: 22
+Depends: zenity, bash, coreutils, xdg-utils
+Section: admin
+Priority: optional
+Homepage: https://github.com/openyellowos/oYo-ui-changer
+Description: oYo UI changer (Zenity-based)
+ Simple UI changer for open.Yellow.os using Zenity dialogs.
