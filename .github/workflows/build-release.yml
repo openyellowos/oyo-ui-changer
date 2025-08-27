@@ -1,75 +1,32 @@
-name: Build & Release .deb
-
+name: Build .deb and Publish Release
 on:
   push:
-    tags:
-      - '*'          
-  workflow_dispatch:    
-
-permissions:
-  contents: write      # リリース作成に必要
-
+    tags: [ 'v*' ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install build deps
         run: |
-              sudo apt-get update
-              sudo apt-get install -y devscripts debhelper fakeroot build-essential \
-                dpkg-dev lintian
-              # distro-info が無くても --force-distribution を使うので必須ではない
-          
-      - name: Prepare version & changelog
-        env:
-          DEBFULLNAME: "open.Yellow.os CI"
-          DEBEMAIL: "ci@openyellowos.com"
+          sudo apt-get update
+          sudo apt-get install -y build-essential devscripts debhelper dpkg-dev gnupg
+      - name: Build
+        run: dpkg-buildpackage -us -uc
+      - name: Collect artifacts
         run: |
-          set -euo pipefail
-
-          # 手動実行のときは input、タグトリガのときは GITHUB_REF_NAME を使う
-          if [ -n "${{ github.event.inputs.tag || '' }}" ]; then
-            RAW_TAG="${{ github.event.inputs.tag }}"
-          else
-            RAW_TAG="${GITHUB_REF_NAME:-}"
-          fi
-
-          # v1.0-1 → 1.0-1 に正規化
-          TAG="${RAW_TAG#v}"
-          test -n "$TAG" || { echo "TAG not found"; exit 1; }
-
-          CUR_VER="$(dpkg-parsechangelog -S Version || true)"
-
-          if [ "$CUR_VER" = "$TAG" ]; then
-            echo "changelog already at $TAG → skip dch"
-          else
-            # 既存 changelog を更新。distribution は明示＆強制指定
-            dch --force-distribution -D unstable -v "$TAG" "CI release $TAG"
-          fi
-            
-      - name: Build .deb
-        run: |
-          dpkg-buildpackage -us -uc -b
-        env:
-          DEB_BUILD_OPTIONS: nocheck
-
-      - name: Collect artifact
-        id: collect
-        run: |
-          DEB=$(ls -1 ../oyo-ui-changer_*_all.deb | tail -n1)
-          echo "deb_path=$DEB" >> $GITHUB_OUTPUT
-          echo "deb_name=$(basename "$DEB")" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release and upload asset
+          mkdir -p dist
+          shopt -s nullglob
+          mv ../*.deb ../*.changes ../*.buildinfo ../*.dsc ../*.tar.* dist/ || true
+      - name: Create/Update Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
+          generate_release_notes: true
           files: |
-            ${{ steps.collect.outputs.deb_path }}
+            dist/*.deb
+            dist/*.changes
+            dist/*.buildinfo
+            dist/*.dsc
+            dist/*.tar.*
