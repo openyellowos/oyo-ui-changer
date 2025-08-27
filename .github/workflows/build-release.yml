@@ -3,29 +3,57 @@ name: Build & Release .deb
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'           # 例: v1.0-1
+
+permissions:
+  contents: write      # リリース作成に必要
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install build deps
-        run: sudo apt-get update && sudo apt-get install -y devscripts debhelper-compat
-
-      - name: Build
+      - name: Install build tools
         run: |
-          dpkg-buildpackage -us -uc
-          ls -l ..
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential devscripts debhelper fakeroot dpkg-dev
 
-      - name: Upload release
+      - name: Sync version from tag into debian/changelog (if needed)
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"     # v1.0-1 -> 1.0-1
+          CUR=$(dpkg-parsechangelog -S Version || true)
+          if [ "$CUR" != "$TAG" ]; then
+            dch --create -v "$TAG" -D unstable "Release $TAG" \
+              --package oyo-ui-changer --empty
+            # 署名行を適宜修正（CI名でもOK）
+            sed -i "s/<.*@.*>/.github-actions@users.noreply.github.com/" debian/changelog
+          fi
+          echo "DEBVER=$TAG" >> $GITHUB_ENV
+
+      - name: Build .deb
+        run: |
+          dpkg-buildpackage -us -uc -b
+        env:
+          DEB_BUILD_OPTIONS: nocheck
+
+      - name: Collect artifact
+        id: collect
+        run: |
+          DEB=$(ls -1 ../oyo-ui-changer_*_all.deb | tail -n1)
+          echo "deb_path=$DEB" >> $GITHUB_OUTPUT
+          echo "deb_name=$(basename "$DEB")" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and upload asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
           files: |
-            ../*.deb
-            ../*.changes
-            ../*.buildinfo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+            ${{ steps.collect.outputs.deb_path }}
