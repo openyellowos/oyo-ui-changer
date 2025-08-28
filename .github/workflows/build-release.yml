@@ -1,8 +1,8 @@
-name: Notify repo-infra on release
+name: Release with deb + notify apt repo
 
 on:
-  release:
-    types: [published]   # Release が公開されたときに走る
+  push:
+    tags: ['v*'] 
 
 permissions:
   contents: read
