@@ -33,28 +33,3 @@ jobs:
             dist/*.buildinfo
             dist/*.dsc
             dist/*.tar.*
-            
-      - name: Dispatch to repo-infra
-        env:
-          # PAT（repo スコープ）を source repo の Secret に入れておく
-          DISPATCH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
-          INFRA_OWNER: openyellowos
-          INFRA_REPO:  apt-repo-infra
-          SRC_REPO:    ${{ github.repository }}                  # 例: openyellowos/oyo-ui-changer
-          SRC_TAG:     ${{ github.event.release.tag_name }}      # 例: v1.2
-          ENVNAME:     production
-        run: |
-          set -euo pipefail
-          curl -sS -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: token ${DISPATCH_TOKEN}" \
-            https://api.github.com/repos/${INFRA_OWNER}/${INFRA_REPO}/dispatches \
-            -d @- <<'JSON'
-          {
-            "event_type": "deb-release",
-            "client_payload": {
-              "src_repo":  "${SRC_REPO}",
-              "src_tag":   "${SRC_TAG}",
-              "environment": "${ENVNAME}"
-            }
-          }
