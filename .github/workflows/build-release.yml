@@ -1,11 +1,8 @@
-name: Release with deb + notify apt repo
-
+name: Build .deb and Publish Release
 on:
   push:
-    tags: ['v*'] 
-
-permissions:
-  contents: read
+    tags: [ 'v*' ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
