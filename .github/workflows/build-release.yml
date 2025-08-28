@@ -1,13 +1,11 @@
-name: Build .deb and Publish Release
+name: Notify repo-infra on release
+
 on:
-  push:
-    tags: [ 'v*' ]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag (e.g. v1.0.0)'
-        required: true
-        type: string
+  release:
+    types: [published]   # Release が公開されたときに走る
+
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
