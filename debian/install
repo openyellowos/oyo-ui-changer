@@ -1,2 +1,2 @@
-src/oyo-ui-changer.sh usr/bin/oyo-ui-changer
+src/oyo-ui-changer usr/bin/
 desktop/oYo-ui-changer.desktop usr/share/applications/
