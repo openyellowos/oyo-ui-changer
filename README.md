@@ -22,17 +22,26 @@ oYoのリポジトリからインストール可能です。
 sudo apt update
 sudo apt install oyo-ui-changer
 ```
+
 ---
 
 ## 使い方
 
+### GUIで適用
 ```bash
 # GUI で UI を選択して適用
 oyo-ui-changer
 ```
-
 - ダイアログで UI を選択 → OK で適用  
 - 成功メッセージを `zenity --info` で表示  
+
+### CLIで直接指定
+```bash
+# GUI を使わずに直接適用
+oyo-ui-changer oYo-original
+oyo-ui-changer windows
+oyo-ui-changer mac
+```
 
 ---
 
@@ -48,6 +57,7 @@ oyo-ui-changer
   - `kimpanel@kde.org`
 
 > これらの拡張が未インストールの場合、設定適用に失敗します。
+
 ---
 
 ## 仕組みと設定方法（管理者向け）
@@ -88,6 +98,16 @@ flowchart LR
    ```
    - changelog に修正内容を記入する。
 
+   例:
+   ```text
+   oyo-ui-changer (1.1-1) unstable; urgency=medium
+
+     * dash-to-dock 設定変更の不具合を修正
+     * README.md の利用方法を更新
+
+    -- 開発者名 <you@example.com>  Sat, 31 Aug 2025 20:00:00 +0900
+   ```
+
 4. **コミット & push**
    ```bash
    git add .
@@ -121,8 +141,66 @@ flowchart LR
 
 ---
 
+## 開発環境に必要なパッケージ & ローカルでビルドする手順
+
+### 必要なツールのインストール
+```bash
+sudo apt update
+sudo apt install -y devscripts build-essential debhelper lintian
+```
+
+### deb-src を有効にする
+1. `/etc/apt/sources.list` を編集します。
+   ```bash
+   sudo nano /etc/apt/sources.list
+   ```
+2. 以下のような行を探し、コメントアウトを解除してください。
+   ```text
+   deb http://deb.debian.org/debian trixie main contrib non-free-firmware
+   # deb-src http://deb.debian.org/debian trixie main contrib non-free-firmware
+   ```
+   ↓ 変更後
+   ```text
+   deb-src http://deb.debian.org/debian trixie main contrib non-free-firmware
+   ```
+3. 保存して終了後、更新します。
+   ```bash
+   sudo apt update
+   ```
+
+### ビルド依存の導入
+```bash
+sudo apt-get build-dep -y ./
+```
+
+### ローカルビルド
+```bash
+# 署名なしでバイナリのみビルド
+dpkg-buildpackage -us -uc -b
+# または（同等）
+debuild -us -uc -b
+```
+- 生成物: `../oyo-ui-changer_*_amd64.deb`（親ディレクトリに出力）  
+
+### テストインストール / アンインストール
+```bash
+sudo apt install ./../oyo-ui-changer_*_amd64.deb
+# 動作確認後に削除する場合
+sudo apt remove oyo-ui-changer
+```
+
+### クリーン
+```bash
+# パッケージの生成物を削除
+fakeroot debian/rules clean
+# もしくは
+dpkg-buildpackage -T clean
+```
+
+---
+
 ### 注意事項
 
 - **必ず changelog を更新すること**  
 - **バージョン番号は changelog, git tag, GitHub Release を揃えること**  
-- **依存関係変更時は debian/control を更新すること**
+- **依存関係変更時は debian/control を更新すること**  
