@@ -100,7 +100,7 @@ flowchart LR
 
    例:
    ```text
-   oyo-ui-changer (1.1-1) unstable; urgency=medium
+   oyo-ui-changer (1.1-1) kerria; urgency=medium
 
      * dash-to-dock 設定変更の不具合を修正
      * README.md の利用方法を更新
