@@ -14,64 +14,14 @@ UI 選択には `zenity` を使用した簡易 GUI を提供します。
 
 ---
 
-## 機能（プロファイル別の適用内容）
+## クライアントPCからの取得方法
 
-UI 適用時は、一旦 **拡張機能を無効化** → **設定反映** → **拡張機能を再有効化** します。  
-（`dconf write /org/gnome/shell/disable-user-extensions true/false`）
+oYoのリポジトリからインストール可能です。
 
-### 1) oYo Original Style
-- **Dash to Dock**
-  - `custom-theme-shrink=true`, `dock-fixed=true`, `dash-max-icon-size=32`
-  - `extend-height=true`, `dock-position='LEFT'`
-  - `running-indicator-style='DOTS'`, `transparency-mode='DYNAMIC'`
-  - `show-apps-at-top=false`, `click-action='minimize'`
-- **ウィンドウボタン配置**
-  - `'appmenu:minimize,maximize,close'`
-- **有効化する拡張機能**
-  - `['dash-to-dock@micxgx.gmail.com','add-to-desktop@tommimon.github.com','ding@rastersoft.com','kimpanel@kde.org']`
-
-### 2) Windows UI Style
-- **Arc Menu**
-  - `menu-layout='Windows'`, `position-in-panel='Left'`
-- **Dash to Panel**
-  - `panel-positions='{"0":"BOTTOM"}'`, `panel-sizes='{"0":36}'`
-  - `panel-element-positions` を JSON で詳細配置（タスクバー有効／左寄せ 等）
-- **ウィンドウボタン配置**
-  - `'appmenu:minimize,maximize,close'`
-- **有効化する拡張機能**
-  - `['arcmenu@arcmenu.com','dash-to-panel@jderose9.github.com','add-to-desktop@tommimon.github.com','ding@rastersoft.com','kimpanel@kde.org']`
-
-### 3) Mac UI Style
-- **Arc Menu**
-  - `menu-layout='Brisk'`, `position-in-panel='Left'`
-- **Dash to Dock**
-  - `custom-theme-shrink=true`, `dock-fixed=false`, `dash-max-icon-size=38`
-  - `extend-height=false`, `dock-position='BOTTOM'`
-  - `running-indicator-style='DOTS'`, `transparency-mode='DYNAMIC'`
-  - `show-apps-at-top=true`, `click-action='minimize'`
-- **Dash to Panel**
-  - `panel-positions='{"0":"TOP"}'`, `panel-sizes='{"0":32}'`
-  - `panel-element-positions` を JSON で詳細配置（トップパネル／タスクバー非表示 等）
-- **ウィンドウボタン配置**
-  - `'close,minimize,maximize:appmenu'`
-- **有効化する拡張機能**
-  - `['arcmenu@arcmenu.com','dash-to-panel@jderose9.github.com','add-to-desktop@tommimon.github.com','ding@rastersoft.com','kimpanel@kde.org','dash-to-dock@micxgx.gmail.com']`
-
----
-
-## 依存関係
-
-- ランタイム: `bash`, `dconf`, `zenity`
-- GNOME Shell 拡張:
-  - `arcmenu@arcmenu.com`
-  - `dash-to-panel@jderose9.github.com`
-  - `dash-to-dock@micxgx.gmail.com`
-  - `add-to-desktop@tommimon.github.com`
-  - `ding@rastersoft.com`
-  - `kimpanel@kde.org`
-
-> これらの拡張が未インストールの場合、設定適用に失敗します。パッケージ依存またはインストールドキュメントで担保してください。
-
+```bash
+sudo apt update
+sudo apt install oyo-ui-changer
+```
 ---
 
 ## 使い方
@@ -86,23 +36,31 @@ oyo-ui-changer
 
 ---
 
-## CI/CD の仕組み
+## 依存関係
 
-本リポジトリは GitHub Actions で `.deb` を自動ビルド・リリース。  
-次に [`apt-repo-infra`](https://github.com/openyellowos/apt-repo-infra) を **手動で Run workflow** し、APT リポジトリに反映します。
+- ランタイム: `bash`, `dconf`, `zenity`
+- GNOME Shell 拡張:
+  - `arcmenu@arcmenu.com`
+  - `dash-to-panel@jderose9.github.com`
+  - `dash-to-dock@micxgx.gmail.com`
+  - `add-to-desktop@tommimon.github.com`
+  - `ding@rastersoft.com`
+  - `kimpanel@kde.org`
 
-### フロー
+> これらの拡張が未インストールの場合、設定適用に失敗します。
+---
 
-1. タグを push  
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-2. Actions が `.deb` をビルドし Release に添付  
-3. `apt-repo-infra` の **Run workflow** を実行（手動）  
-4. `deb.openyellowos.org` に公開
+## 仕組みと設定方法（管理者向け）
 
-### 図解（Mermaid）
+- `dconf` コマンドを使って GNOME Shell の設定を切り替えています。  
+- `dash-to-dock` などの GNOME 拡張機能を有効/無効にして UI を変更します。  
+
+---
+
+## CI/CD の仕組み（開発者向け）
+
+`oyo-ui-changer` の開発では GitHub Actions を利用した CI/CD を導入しています。  
+修正内容を push → tag を付与 → GitHub Actions で自動ビルド → `apt-repo-infra` でリポジトリ公開、という流れです。 
 
 ```mermaid
 flowchart LR
@@ -110,36 +68,61 @@ flowchart LR
     actions --> release["GitHub Release（成果物添付）"]
     release -->|Run workflow 手動| infra["apt-repo-infra（Run workflow 実行）"]
     infra --> repo["deb.openyellowos.org（APT リポジトリに公開）"]
-```
+``` 
 
+### フロー概要
+
+1. **ソースコード修正**
+   ```bash
+   git clone https://github.com/openyellowos/oyo-ui-changer.git
+   cd oyo-ui-changer
+   ```
+
+2. **プログラム修正**
+   - `bin/oyo-ui-changer` を編集する。  
+   - 必要があれば README.md も修正する。  
+
+3. **changelog 更新**
+   ```bash
+   debchange -i
+   ```
+   - changelog に修正内容を記入する。
+
+4. **コミット & push**
+   ```bash
+   git add .
+   git commit -m "修正内容を記述"
+   git push origin main
+   ```
+
+5. **タグ付与**
+   ```bash
+   git tag v1.1-1
+   git push origin v1.1-1
+   ```
+
+6. **GitHub Actions による自動ビルド**
+   - タグ push を検知してワークフローが起動。  
+   - `.deb` がビルドされ、GitHub Release に添付される。  
+
+7. **APT リポジトリ公開**
+   - `apt-repo-infra` の GitHub Actions を **手動で Run workflow** する。  
+   - 実際の入力例：  
+     - Source repo: `openyellowos/oyo-ui-changer`  
+     - Release tag: `v1.1-1`  
+     - Target environment: `production`  
+
+   - 実行すると apt リポジトリに反映される。  
+   - 利用者は以下で最新を取得可能：  
+     ```bash
+     sudo apt update
+     sudo apt install oyo-ui-changer
+     ```
 
 ---
 
-## ローカルビルド
+### 注意事項
 
-```bash
-sudo apt-get install devscripts debhelper
-debuild -us -uc
-ls ../*.deb
-```
-
----
-
-## バージョニング / 環境
-
-- Semantic Versioning（`vX.Y.Z`）  
-- **staging / production** を想定（現状は主に production）
-
----
-
-## ライセンス
-
-MIT License  
-© open.Yellow.os Project Team
-
----
-
-## メンテナンス
-
-- プロジェクト: [open.Yellow.os](https://openyellowos.org)  
-- GitHub: [openyellowos/oyo-ui-changer](https://github.com/openyellowos/oyo-ui-changer)
+- **必ず changelog を更新すること**  
+- **バージョン番号は changelog, git tag, GitHub Release を揃えること**  
+- **依存関係変更時は debian/control を更新すること**
