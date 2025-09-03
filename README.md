@@ -128,8 +128,6 @@ flowchart LR
 7. **APT リポジトリ公開**
    - `apt-repo-infra` の GitHub Actions を **手動で Run workflow** する。  
    - 実際の入力例：  
-     - Source repo: `openyellowos/oyo-ui-changer`  
-     - Release tag: `v1.1-1`  
      - Target environment: `production`  
 
    - 実行すると apt リポジトリに反映される。  
