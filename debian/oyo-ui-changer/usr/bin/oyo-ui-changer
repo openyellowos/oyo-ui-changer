@@ -2,7 +2,7 @@
 
 ############################################################################
 ##
-##  名称：change_ui
+##  名称：oyo-ui-changer
 ##  処理：UIを変更する
 ##
 ############################################################################
@@ -55,11 +55,11 @@ change_ui_windows_style() {
 
     ###/org/gnome/shell/extensions/dash-to-panel/###
      #パネル位置
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-positions "'{\"0\":\"BOTTOM\"}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-positions "'{\"RHT-0x00000000\":\"BOTTOM\"}'"
      #パネルサイズ
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-sizes "'{\"0\":36}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-sizes "'{\"RHT-0x00000000\":36}'"
      
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-element-positions "'{\"0\":[{\"element\":\"showAppsButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"activitiesButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"leftBox\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"taskbar\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"centerBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"rightBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"dateMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"systemMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"desktopButton\",\"visible\":true,\"position\":\"stackedBR\"}]}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-element-positions "'{\"RHT-0x00000000\":[{\"element\":\"showAppsButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"activitiesButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"leftBox\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"taskbar\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"centerBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"rightBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"dateMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"systemMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"desktopButton\",\"visible\":true,\"position\":\"stackedBR\"}]}'"
     
     ###dconf write /org/gnome/desktop/wm/preferences/###     
     dconf write /org/gnome/desktop/wm/preferences/button-layout "'appmenu:minimize,maximize,close'"
@@ -101,16 +101,17 @@ change_ui_mac_style() {
 
     ###/org/gnome/shell/extensions/dash-to-panel/###
      #パネル位置
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-positions "'{\"0\":\"TOP\"}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-positions "'{\"RHT-0x00000000\":\"TOP\"}'"
      #パネルサイズ
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-sizes "'{\"0\":32}'"
-    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-element-positions "'{\"0\":[{\"element\":\"showAppsButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"activitiesButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"leftBox\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"taskbar\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"centerBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"rightBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"systemMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"desktopButton\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"dateMenu\",\"visible\":true,\"position\":\"stackedBR\"}]}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-sizes "'{\"RHT-0x00000000\":32}'"
+    dconf write /org/gnome/shell/extensions/dash-to-panel/panel-element-positions "'{\"RHT-0x00000000\":[{\"element\":\"showAppsButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"activitiesButton\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"leftBox\",\"visible\":true,\"position\":\"stackedTL\"},{\"element\":\"taskbar\",\"visible\":false,\"position\":\"stackedTL\"},{\"element\":\"centerBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"rightBox\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"dateMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"systemMenu\",\"visible\":true,\"position\":\"stackedBR\"},{\"element\":\"desktopButton\",\"visible\":true,\"position\":\"stackedBR\"}]}'"
 
     ###dconf write /org/gnome/desktop/wm/preferences/###     
     dconf write /org/gnome/desktop/wm/preferences/button-layout "'close,minimize,maximize:appmenu'"
 
      #有効なExtension
     dconf write /org/gnome/shell/enabled-extensions "['arcmenu@arcmenu.com', 'dash-to-panel@jderose9.github.com', 'add-to-desktop@tommimon.github.com', 'ding@rastersoft.com', 'kimpanel@kde.org', 'dash-to-dock@micxgx.gmail.com']"
+
      #無効なEcxtension
     dconf write /org/gnome/shell/disabled-extensions "'[]'"
     
@@ -130,7 +131,7 @@ VALUE=$(zenity --title "oYo UI Changer" \
                --radiolist \
                --hide-header \
                --width 320 \
-               --height 240 \
+               --height 320 \
                --text "UIを選択して、OKボタンを押してください。" \
                --cancel-label "閉じる" \
                --column "select" \
@@ -155,5 +156,5 @@ if [ $EXITCODE = 0 ]; then
                --text="どれか１つを選択してください。"
     fi
      
-    change-ui
+    oyo-ui-changer
 fi

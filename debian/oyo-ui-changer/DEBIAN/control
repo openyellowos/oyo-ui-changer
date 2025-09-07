@@ -1,8 +1,8 @@
 Package: oyo-ui-changer
-Version: 1.0
+Version: 1.2-2
 Architecture: all
 Maintainer: open.Yellow.os <admin@openyellowos.com>
-Installed-Size: 22
+Installed-Size: 21
 Depends: zenity, bash, coreutils, xdg-utils
 Section: admin
 Priority: optional
