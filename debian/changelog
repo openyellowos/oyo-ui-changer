@@ -1,3 +1,9 @@
+oyo-ui-changer (1.3-1) UNRELEASED; urgency=medium
+
+  * Fix bug
+
+ -- toshio <solution92001@gmail.com>  Wed, 24 Dec 2025 20:11:06 +0900
+
 oyo-ui-changer (1.2-2.1) kerria; urgency=medium
 
   * Fix bug
