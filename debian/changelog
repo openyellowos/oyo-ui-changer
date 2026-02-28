@@ -1,8 +1,9 @@
-oyo-ui-changer (1.3-1) UNRELEASED; urgency=medium
+oyo-ui-changer (1.3-1.1) UNRELEASED; urgency=medium
 
-  * Fix bug
+  * 日本語/英語の切り替え機能を実装
+  * 
 
- -- toshio <solution92001@gmail.com>  Wed, 24 Dec 2025 20:11:06 +0900
+ -- toshio <toshio@oYo>  Sat, 28 Feb 2026 14:13:13 +0900
 
 oyo-ui-changer (1.2-2.1) kerria; urgency=medium
 

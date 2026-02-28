@@ -229,46 +229,71 @@ change_ui_mac_style() {
 }
 
 ############################################################################
+## ロケール判定（jaなら日本語、それ以外は英語） ---
+############################################################################
+get_locale() {
+  # 優先順位: LC_ALL > LC_MESSAGES > LANG > LANGUAGE
+  echo "${LC_ALL:-${LC_MESSAGES:-${LANG:-${LANGUAGE:-}}}}"
+}
+is_ja() {
+  local loc
+  loc="$(get_locale)"
+  [[ "$loc" == ja* || "$loc" == *:ja* ]]
+}
+
+############################################################################
 ## メイン処理
 ############################################################################
+if is_ja; then
+  TITLE="oYo UI Changer"
+  MSG_SELECT="UIを選択して、OKボタンを押してください。"
+  BTN_CLOSE="閉じる"
+  MSG_CHANGED="%sに変更しました。"
+  MSG_PICKONE="どれか１つを選択してください。"
+else
+  TITLE="oYo UI Changer"
+  MSG_SELECT="Select a UI and press OK."
+  BTN_CLOSE="Close"
+  MSG_CHANGED="Switched to %s."
+  MSG_PICKONE="Please select one option."
+fi
+
 OYO_UI="oYo Original Style"
 WINDOWS_UI="Windows UI Style"
 MAC_UI="Mac UI Style"
 
 while true; do
+  VALUE=$(
+    zenity --title "$TITLE" \
+      --list \
+      --radiolist \
+      --hide-header \
+      --width 320 \
+      --height 320 \
+      --text "$MSG_SELECT" \
+      --cancel-label "$BTN_CLOSE" \
+      --column "select" \
+      --column "UI" \
+      FALSE "$OYO_UI" \
+      FALSE "$WINDOWS_UI" \
+      FALSE "$MAC_UI"
+  )
+  EXITCODE=$?
 
-	VALUE=$(zenity --title "oYo UI Changer" \
-			--list \
-			--radiolist \
-			--hide-header \
-			--width 320 \
-			--height 320 \
-			--text "UIを選択して、OKボタンを押してください。" \
-			--cancel-label "閉じる" \
-			--column "select" \
-			--column "UI" FALSE "$OYO_UI" FALSE "$WINDOWS_UI"  FALSE "$MAC_UI")
-
-	EXITCODE=$?
-	if [ $EXITCODE = 0 ]; then
-		if [ "$VALUE" == "$OYO_UI" ]; then
-			change_ui_oYo_original
-        		zenity --info \
-               		--text="$OYO_UIに変更しました。"
-		elif [ "$VALUE" == "$WINDOWS_UI" ]; then
-			change_ui_windows_style
-			zenity --info \
-				--text="$WINDOWS_UIに変更しました。"
-		elif [ "$VALUE" == "$MAC_UI" ]; then
-			change_ui_mac_style
-			zenity --info \
-				--text="$MAC_UIに変更しました。"
-		else
-			zenity --info \
-				--text="どれか１つを選択してください。"
-		fi
-	else
-		break
-	fi
-
+  if [ "$EXITCODE" = 0 ]; then
+    if [ "$VALUE" = "$OYO_UI" ]; then
+      change_ui_oYo_original
+      zenity --info --text="$(printf "$MSG_CHANGED" "$OYO_UI")"
+    elif [ "$VALUE" = "$WINDOWS_UI" ]; then
+      change_ui_windows_style
+      zenity --info --text="$(printf "$MSG_CHANGED" "$WINDOWS_UI")"
+    elif [ "$VALUE" = "$MAC_UI" ]; then
+      change_ui_mac_style
+      zenity --info --text="$(printf "$MSG_CHANGED" "$MAC_UI")"
+    else
+      zenity --info --text="$MSG_PICKONE"
+    fi
+  else
+    break
+  fi
 done
-
