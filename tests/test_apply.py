@@ -37,6 +37,16 @@ uic-test15.py（ArcMenu の force-menu-location）16 件
   5: すでに目的の値なら書かない                            3 件
   6: ArcMenu のほかの設定に触れない                        2 件
   7: 書き込み失敗 → rollback に含まれる                    3 件
+uic-test16.py（macOS 適用）53 件
+  1: Original → macOS（他 Extension の保持、書く順番）     16 件
+  2: すでに macOS → 書き込みなし                           1 件
+  3: macOS → Original / Windows 10 / Windows 11            4 件
+  4: Windows 10 / 11 → macOS                              16 件
+  5: Original 経由と macOS 経由で Windows の状態が一致      2 件
+  6: 往復（macOS → W10 → macOS → W11）                     1 件
+  7: 複数モニター                                          9 件
+  8: disable-user-extensions = true → 書き込みなし         1 件
+  9: 書き込み失敗 → rollback                               3 件
 実行: python3 -m unittest discover -s tests -v
 """
 
@@ -283,7 +293,7 @@ WINDOWS_ALLOWED = (
 
 
 class WindowsTestCase(ApplyTestCase):
-    """旧 uic-test11.py / uic-test13.py の setup(): dock-position=LEFT、button-layout は既定値のまま"""
+    """旧 uic-test11.py / uic-test13.py / uic-test16.py の setup(): dock-position=LEFT、button-layout は既定値のまま"""
 
     def setup_state(self, enabled, disabled=(), disable_user=False, **panel):
         super().setup_state(enabled, disabled=disabled, disable_user=disable_user, dock_pos="LEFT",
@@ -897,6 +907,293 @@ class ArcMenuRollbackTest(ArcMenuTestCase):
 
     def test_7_3_detect_still_windows10(self):
         self.assertEqual(detect(), "windows10")
+
+
+#----------------------------------------------------------------------------------------------------------------
+# macOS（旧 uic-test16.py）
+#----------------------------------------------------------------------------------------------------------------
+def short_schema(schema_id):
+    """旧テストの記録と同じ、スキーマ ID の最後の部分（dash-to-dock、preferences など）"""
+    return schema_id.split(".")[-1]
+
+
+MACOS_ALLOWED = (
+    {("dash-to-dock", k) for k in ns["MACOS_DOCK_SETTINGS"]}
+    | {("dash-to-panel", k) for k in ("panel-positions", "panel-sizes", "panel-element-positions",
+                                      "panel-lengths", "stockgs-keep-dash")}
+    | {("arcmenu", k) for k in ("menu-layout", "position-in-panel", "dash-to-panel-standalone",
+                                "force-menu-location")}
+    | {("preferences", "button-layout"), ("shell", "enabled-extensions"), ("shell", "disabled-extensions")}
+)
+
+
+class MacStateChecks:
+    """旧 mac_state() の 8 件。1 / 4 / 7 で使う（self.keys: 期待するモニターの鍵）"""
+
+    keys = ("0",)
+
+    def test_mac_1_detect_macos(self):
+        self.assertEqual(detect(), "macos")
+
+    def test_mac_2_elements_all_macos(self):
+        elements = self.panel_json("panel-element-positions")
+        self.assertEqual(list(elements), list(self.keys))
+        for value in elements.values():
+            self.assertEqual(value, ns["MACOS_ELEMENTS"])
+
+    def test_mac_3_taskbar_and_desktop_button_hidden(self):
+        by_name = {e["element"]: e for e in self.panel_json("panel-element-positions")[self.keys[0]]}
+        self.assertIs(by_name["taskbar"]["visible"], False)
+        self.assertIs(by_name["desktopButton"]["visible"], False)
+        self.assertIs(by_name["leftBox"]["visible"], True)
+
+    def test_mac_4_positions_top_sizes_32(self):
+        self.assertEqual(self.panel_json("panel-positions"), {k: "TOP" for k in self.keys})
+        self.assertEqual(self.panel_json("panel-sizes"), {k: 32 for k in self.keys})
+
+    def test_mac_5_stockgs_keep_dash(self):
+        self.assertIs(self.panel.get_boolean("stockgs-keep-dash"), True)
+
+    def test_mac_6_dock(self):
+        self.assertEqual({k: self.dock.get_value(k).unpack() for k in ns["MACOS_DOCK_SETTINGS"]},
+                         {"dock-position": "BOTTOM", "extend-height": False, "dash-max-icon-size": 38,
+                          "show-apps-at-top": True, "dock-fixed": True, "custom-theme-shrink": True,
+                          "running-indicator-style": "DOTS", "transparency-mode": "DYNAMIC",
+                          "click-action": "minimize"})
+
+    def test_mac_7_arcmenu(self):
+        self.assertEqual((self.arc.get_string("menu-layout"), self.arc.get_string("position-in-panel"),
+                          self.arc.get_string("force-menu-location"), self.arc.get_boolean("dash-to-panel-standalone")),
+                         ("brisk", "Left", "Off", False))
+
+    def test_mac_8_button_layout(self):
+        self.assertEqual(self.wm.get_string("button-layout"), "close,minimize,maximize:appmenu")
+
+
+class MacosTestCase(WindowsTestCase):
+    def setup_from_original(self):
+        """1 の前提: Original 相当（dash-to-panel / ArcMenu は disabled）"""
+        self.setup_state([OTHERS[0], DOCK, OTHERS[1], OTHERS[2]],
+                         disabled=["foo@example.com", PANEL, ARC, "bar@example.com"])
+
+
+class MacosFromOriginalTest(MacStateChecks, MacosTestCase):
+    """1: Original → macOS。mac_state の 8 件 ＋ 8 件"""
+
+    def setUp(self):
+        super().setUp()
+        self.setup_from_original()
+        self.before = detect()
+        self.written, self.error = self.try_apply("macos")
+
+    def test_1_01_precondition_original(self):
+        self.assertEqual(self.before, "original")
+
+    def test_1_02_applied_without_error(self):
+        self.assertIsNone(self.error)
+
+    def test_1_11_enabled(self):
+        self.assertEqual(self.shell.get_strv("enabled-extensions"),
+                         [OTHERS[0], DOCK, OTHERS[1], OTHERS[2], PANEL, ARC])
+
+    def test_1_12_disabled(self):
+        self.assertEqual(self.shell.get_strv("disabled-extensions"), ["foo@example.com", "bar@example.com"])
+
+    def test_1_13_writes_within_allowed(self):
+        self.assertTrue(self.writes)
+        for schema_id, key, meth in self.writes:
+            self.assertIn((short_schema(schema_id), key), MACOS_ALLOWED)
+            self.assertEqual(meth, "set_value")
+
+    def test_1_14_panel_lengths_untouched(self):
+        self.assertEqual(self.panel.get_string("panel-lengths"), "{}")
+
+    def test_1_15_disable_user_extensions_untouched(self):
+        self.assertIs(self.shell.get_boolean("disable-user-extensions"), False)
+
+    def test_1_16_write_order(self):
+        # Dock → パネル → ArcMenu → ボタンの配置 → Extension の一覧
+        order = []
+        for schema_id, _key, _meth in self.writes:
+            if not order or order[-1] != short_schema(schema_id):
+                order.append(short_schema(schema_id))
+        self.assertEqual(order, ["dash-to-dock", "dash-to-panel", "arcmenu", "preferences", "shell"])
+
+
+class MacosSwitchTest(MacosTestCase):
+    """2: すでに macOS → 書き込みなし ／ 3: macOS → Original / Windows 10 / Windows 11"""
+
+    def test_2_1_already_macos_no_writes(self):
+        self.setup_from_original()
+        self.try_apply("macos")
+        self.writes.clear()
+        written, error = self.try_apply("macos")
+        self.assertIsNone(error)
+        self.assertEqual(written, [])
+        self.assertEqual(self.writes, [])
+
+    def test_3_1_macos_to_original(self):
+        # 旧テストでは 1 → 2 の続き
+        self.setup_from_original()
+        self.try_apply("macos")
+        self.try_apply("macos")
+        self.try_apply("original")
+        self.assertEqual(detect(), "original")
+
+    def macos_to_windows10(self):
+        self.setup_state([DOCK])
+        self.try_apply("macos")
+        self.try_apply("windows10")
+
+    def test_3_2_macos_to_windows10(self):
+        self.macos_to_windows10()
+        self.assertEqual(detect(), "windows10")
+        self.assertIs(self.panel.get_boolean("stockgs-keep-dash"), False)
+
+    def test_3_3_dock_disabled(self):
+        # Dock は無効になるだけで、Dock の設定は macOS のまま残る（旧テストどおり、ここでは確認しない）
+        self.macos_to_windows10()
+        self.assertNotIn(DOCK, self.shell.get_strv("enabled-extensions"))
+
+    def test_3_4_macos_to_windows11(self):
+        # 旧テストでは 3_2 の続き（→ macOS → Windows 11）
+        self.macos_to_windows10()
+        self.try_apply("macos")
+        self.try_apply("windows11")
+        self.assertEqual(detect(), "windows11")
+        self.assertIs(self.panel.get_boolean("stockgs-keep-dash"), False)
+        self.assertEqual(self.arc.get_string("force-menu-location"), "BottomCentered")
+
+
+class MacosFromWindows10Test(MacStateChecks, MacosTestCase):
+    """4: Windows 10 → macOS（mac_state の 8 件）"""
+
+    def setUp(self):
+        super().setUp()
+        self.setup_state([DOCK])
+        self.try_apply("windows10")
+        self.try_apply("macos")
+
+
+class MacosFromWindows11Test(MacStateChecks, MacosTestCase):
+    """4: Windows 11 → macOS（mac_state の 8 件）"""
+
+    def setUp(self):
+        super().setUp()
+        self.setup_state([DOCK])
+        self.try_apply("windows11")
+        self.try_apply("macos")
+
+
+class MacosPathIndependenceTest(MacosTestCase):
+    """5: Original → Windows と macOS → Windows の最終状態が一致する（管理対象キー）／ 6: 往復"""
+
+    def snapshot(self):
+        state = {k: self.panel.get_value(k).unpack()
+                 for k in ("panel-positions", "panel-sizes", "panel-element-positions", "panel-lengths",
+                           "stockgs-keep-dash")}
+        state.update({k: self.arc.get_value(k).unpack()
+                      for k in ("menu-layout", "position-in-panel", "force-menu-location", "dash-to-panel-standalone")})
+        state.update({"button-layout": self.wm.get_string("button-layout"),
+                      "enabled": self.shell.get_strv("enabled-extensions")})
+        return state
+
+    def assert_same_via_macos(self, target):
+        self.setup_state([OTHERS[0], DOCK])
+        self.try_apply(target)
+        direct = self.snapshot()
+        self.setup_state([OTHERS[0], DOCK])
+        self.try_apply("macos")
+        self.try_apply(target)
+        via_macos = self.snapshot()
+        self.assertEqual({k: (v, via_macos[k]) for k, v in direct.items() if v != via_macos[k]}, {})
+
+    def test_5_1_windows10_same_via_macos(self):
+        self.assert_same_via_macos("windows10")
+
+    def test_5_2_windows11_same_via_macos(self):
+        self.assert_same_via_macos("windows11")
+
+    def test_6_1_round_trip(self):
+        self.setup_state([DOCK])
+        seq = []
+        for layout_id in ("macos", "windows10", "macos", "windows11"):
+            self.try_apply(layout_id)
+            seq.append(detect())
+        self.assertEqual(seq, ["macos", "windows10", "macos", "windows11"])
+
+
+class MacosMultiMonitorTest(MacStateChecks, MacosTestCase):
+    """7: 複数モニター（mac_state の 8 件 ＋ lengths 1 件）"""
+
+    keys = ("A-1", "B-2")
+
+    def setUp(self):
+        super().setUp()
+        self.setup_state(
+            [DOCK],
+            **{"panel-positions": compact_json({"A-1": "BOTTOM", "B-2": "LEFT"}),
+               "panel-sizes": compact_json({"A-1": 36, "B-2": 48}),
+               "panel-element-positions": compact_json({"A-1": ns["WINDOWS10_ELEMENTS"], "B-2": []}),
+               "panel-lengths": compact_json({"A-1": -1, "B-2": 100})})
+        self.try_apply("macos")
+
+    def test_7_9_lengths(self):
+        self.assertEqual(self.panel_json("panel-lengths"), {"A-1": 100, "B-2": 100})
+
+
+class MacosUserExtensionsDisabledTest(MacosTestCase):
+    """8: disable-user-extensions = true → 書き込みなし"""
+
+    def test_8_1_blocked_without_writes(self):
+        self.setup_state([DOCK], disable_user=True)
+        _written, error = self.try_apply("macos")
+        self.assertPlainApplyError(error, ns["MSG_USER_EXTENSIONS_DISABLED"])
+        self.assertEqual(self.writes, [])
+
+
+class MacosRollbackTest(MacosTestCase):
+    """9: Extension 一覧の書き込みを失敗させる（Dock・パネル・ArcMenu・ボタン配置は書いたあと）→ 元どおり"""
+
+    def setUp(self):
+        super().setUp()
+        self.setup_state([OTHERS[0], PANEL, ARC],
+                         **{"panel-positions": compact_json({"A-1": "BOTTOM"}),
+                            "panel-element-positions": compact_json({"A-1": ns["WINDOWS11_ELEMENTS"]})})
+        self.arc.set_string("menu-layout", "11")
+        self.arc.set_string("position-in-panel", "Center")
+        self.arc.set_string("force-menu-location", "BottomCentered")
+        Gio.Settings.sync()
+        self.before_layout = detect()
+        self.before = self.user_values()
+        self.writes.clear()
+
+        orig = Gio.Settings.set_value
+
+        def failing(settings, key, value):
+            if key == "enabled-extensions":
+                return False
+            return orig(settings, key, value)
+        Gio.Settings.set_value = failing
+        try:
+            self.written, self.error = self.try_apply("macos")
+        finally:
+            Gio.Settings.set_value = orig
+
+    def test_9_1_failure_after_other_schemas_written(self):
+        self.assertIsInstance(self.error, ns["ApplyWriteError"])
+        written = {short_schema(s) for s, _k, meth in self.writes if meth == "set_value"}
+        self.assertLessEqual({"dash-to-dock", "dash-to-panel", "arcmenu", "preferences"}, written)
+
+    def test_9_2_restored_exactly(self):
+        after = self.user_values()
+        self.assertEqual({k: (v, after[k]) for k, v in self.before.items() if v != after[k]}, {})
+
+    def test_9_3_no_pending_and_detect_unchanged(self):
+        for settings in self.all_settings():
+            self.assertFalse(settings.get_has_unapplied(), settings.props.schema_id)
+        self.assertEqual(self.before_layout, "windows11")
+        self.assertEqual(detect(), "windows11")
 
 
 if __name__ == "__main__":
