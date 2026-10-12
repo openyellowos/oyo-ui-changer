@@ -2,12 +2,14 @@
 日本語翻訳（po/ja.po）のテスト
 
   - msgfmt --check で翻訳ファイルを一時ディレクトリにコンパイルできる（リポジトリには .mo を作らない）
-  - POT の 17 件すべてに日本語訳があり、空訳・fuzzy がない
+  - POT の 19 件すべてに日本語訳があり、空訳・fuzzy がない
   - 差し込み（{name} など）が英語原文と一致し、値を差し込める
   - gettext で読み込むと日本語訳が得られ、未翻訳は英語のまま
   - アプリの表示文言は、そのテストの間だけ ns["_translation"] を差し替えたときだけ日本語になる
     （helpers は英語に固定しているので、ほかのテストには影響しない）
-msgfmt がなければ skip する。
+  - POT がソースと一致している（XGETTEXT_COMMAND で作り直して比べる）
+  - rollback が不完全なときの警告（Banner）が、GUI で日本語の本文と「閉じる」ボタンで表示される
+msgfmt がなければ skip する（xgettext・画面がなければ、そのテストだけ skip）。
 実行: python3 -m unittest discover -s tests -v
 """
 
@@ -26,7 +28,12 @@ from helpers import REPO_DIR, load_app
 DOMAIN = "oyo-ui-changer"
 POT = os.path.join(REPO_DIR, "po", "oyo-ui-changer.pot")
 JA_PO = os.path.join(REPO_DIR, "po", "ja.po")
-EXPECTED_COUNT = 17
+EXPECTED_COUNT = 19
+# POT を作るコマンド（po/oyo-ui-changer.pot はこのコマンドで作り直す）
+XGETTEXT_COMMAND = ["xgettext", "--language=Python", "--from-code=UTF-8", "--keyword=_", "--keyword=N_",
+                    "--add-location=file", "--package-name=oyo-ui-changer"]
+APP_SOURCE = os.path.join(REPO_DIR, "src", "oyo-ui-changer.py")
+BANNER_JA = "レイアウトの適用に失敗し、一部の設定を元に戻せませんでした。デスクトップの設定が変更されたままの可能性があります。レイアウトを選び直して、再度適用すると改善する場合があります。"
 
 # 確定した日本語の文言
 CONFIRMED = {
@@ -40,6 +47,9 @@ CONFIRMED = {
     "{name} is not installed.": "{name} がインストールされていません。",
     "User extensions are disabled. Enable GNOME Shell extensions before applying this layout.":
         "GNOME Shell の拡張機能が無効になっています。レイアウトを適用するには、拡張機能を有効にしてください。",
+    "The layout could not be applied, and some settings could not be restored. Your desktop may remain partly "
+    "changed. Selecting a layout and applying it again may help.": BANNER_JA,
+    "Dismiss": "閉じる",
 }
 # 訳文にもそのまま残すべき技術的な語
 TECHNICAL_TERMS = ("GNOME Shell", "dash-to-panel")
@@ -169,6 +179,61 @@ class JapaneseTranslationTest(unittest.TestCase):
 
         ns["_translation"] = english
         self.assertEqual(ns["_"]("Current"), "Current")
+
+    @unittest.skipUnless(shutil.which("xgettext"), "xgettext (gettext) is not installed")
+    def test_11_pot_matches_source(self):
+        # ソースから POT を作り直し、翻訳対象（msgid とその印）が po/oyo-ui-changer.pot と一致することを確かめる
+        fresh = os.path.join(self.localedir, "fresh.pot")
+        returncode, _out, err = run_tool(XGETTEXT_COMMAND + ["--output=" + fresh, APP_SOURCE])
+        self.assertEqual(returncode, 0, err)
+        summarize = lambda entries: {e["msgid"]: sorted(e["flags"]) for e in entries}  # noqa: E731
+        self.assertEqual(summarize(read_po(fresh)), summarize(self.pot))
+
+    def test_12_japanese_banner_in_gui(self):
+        import test_gui  # GUI の仕組みはこのテストだけで使う（画面がなければ skip）
+        if not test_gui.display_available():
+            self.skipTest("no display connection")
+        gns, Gtk = test_gui.ns, test_gui.Gtk
+
+        def texts(widget):
+            found, child = [], widget.get_first_child()
+            if isinstance(widget, (Gtk.Label, Gtk.Button)) and widget.get_label():
+                found.append(widget.get_label())
+            while child:
+                found += texts(child)
+                child = child.get_next_sibling()
+            return found
+
+        def banner_state(app):
+            banner = app.rollback_banner
+            return {"revealed": banner.get_revealed(), "title": banner.get_title(), "button": banner.get_button_label(),
+                    "shown_texts": texts(banner), "apply": app.apply_button.get_label(), "toasts": list(app.test_toasts)}
+
+        english = gns["_translation"]
+        gns["_translation"] = self.japanese()
+        injector = test_gui.FailureInjector()
+        injector.install()
+        try:
+            results, failure = test_gui.run_scenario(
+                (test_gui.check("start"), injector.mode_step("rollback"), test_gui.click("macos"), test_gui.PRESS,
+                 test_gui.check("rollback failed"), injector.mode_step(None)),
+                view_fn=banner_state)
+        finally:
+            injector.uninstall()
+            gns["_translation"] = english
+
+        self.assertIsNone(failure)
+        start, after = results["start"][0], results["rollback failed"][0]
+        self.assertEqual(start["apply"], "適用")
+        self.assertIs(start["revealed"], False)
+        self.assertIs(after["revealed"], True)
+        self.assertEqual(after["title"], BANNER_JA)
+        self.assertEqual(after["button"], "閉じる")
+        self.assertIn(BANNER_JA, after["shown_texts"])
+        self.assertIn("閉じる", after["shown_texts"])
+        self.assertEqual(after["toasts"], start["toasts"])
+        # 差し替えを戻したので、以後のアプリは英語
+        self.assertEqual(gns["_"]("Dismiss"), "Dismiss")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oyo-ui-changer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 19:50+0900\n"
+"POT-Creation-Date: 2026-10-12 21:18+0900\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -21,6 +21,13 @@ msgstr ""
 msgid ""
 "User extensions are disabled. Enable GNOME Shell extensions before applying "
 "this layout."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid ""
+"The layout could not be applied, and some settings could not be restored. "
+"Your desktop may remain partly changed. Selecting a layout and applying it "
+"again may help."
 msgstr ""
 
 #: src/oyo-ui-changer.py
@@ -95,4 +102,8 @@ msgstr ""
 
 #: src/oyo-ui-changer.py
 msgid "Current desktop layout is customized."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Dismiss"
 msgstr ""
