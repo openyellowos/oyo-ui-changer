@@ -2,7 +2,7 @@
 日本語翻訳（po/ja.po）のテスト
 
   - msgfmt --check で翻訳ファイルを一時ディレクトリにコンパイルできる（リポジトリには .mo を作らない）
-  - POT の 19 件すべてに日本語訳があり、空訳・fuzzy がない
+  - POT の 21 件すべてに日本語訳があり、空訳・fuzzy がない
   - 差し込み（{name} など）が英語原文と一致し、値を差し込める
   - gettext で読み込むと日本語訳が得られ、未翻訳は英語のまま
   - アプリの表示文言は、そのテストの間だけ ns["_translation"] を差し替えたときだけ日本語になる
@@ -28,12 +28,14 @@ from helpers import REPO_DIR, load_app
 DOMAIN = "oyo-ui-changer"
 POT = os.path.join(REPO_DIR, "po", "oyo-ui-changer.pot")
 JA_PO = os.path.join(REPO_DIR, "po", "ja.po")
-EXPECTED_COUNT = 19
+EXPECTED_COUNT = 21
 # POT を作るコマンド（po/oyo-ui-changer.pot はこのコマンドで作り直す）
 XGETTEXT_COMMAND = ["xgettext", "--language=Python", "--from-code=UTF-8", "--keyword=_", "--keyword=N_",
                     "--add-location=file", "--package-name=oyo-ui-changer"]
 APP_SOURCE = os.path.join(REPO_DIR, "src", "oyo-ui-changer.py")
 BANNER_JA = "レイアウトの適用に失敗し、一部の設定を元に戻せませんでした。デスクトップの設定が変更されたままの可能性があります。レイアウトを選び直して、再度適用すると改善する場合があります。"
+UNEXPECTED_JA = "予期しないエラーのため、レイアウトを適用できませんでした。"
+CHECK_FAILED_JA = "現在のレイアウトを確認できませんでした。表示が実際のデスクトップと異なる可能性があります。"
 
 # 確定した日本語の文言
 CONFIRMED = {
@@ -50,6 +52,8 @@ CONFIRMED = {
     "The layout could not be applied, and some settings could not be restored. Your desktop may remain partly "
     "changed. Selecting a layout and applying it again may help.": BANNER_JA,
     "Dismiss": "閉じる",
+    "The layout could not be applied because of an unexpected error.": UNEXPECTED_JA,
+    "The current layout could not be checked. The display may not match your desktop.": CHECK_FAILED_JA,
 }
 # 訳文にもそのまま残すべき技術的な語
 TECHNICAL_TERMS = ("GNOME Shell", "dash-to-panel")
@@ -176,9 +180,13 @@ class JapaneseTranslationTest(unittest.TestCase):
         with self.assertRaises(ns["ApplyError"]) as caught:
             ns["plan_layout"]("custom")  # 設定を開く前に止まる（書き込みなし）
         self.assertEqual(str(caught.exception), "まだ実装されていません。")
+        # GUI の例外通知の文言（アプリの定数を翻訳して得る）
+        self.assertEqual(ns["_"](ns["MSG_UNEXPECTED_APPLY_ERROR"]), UNEXPECTED_JA)
+        self.assertEqual(ns["_"](ns["MSG_LAYOUT_CHECK_FAILED"]), CHECK_FAILED_JA)
 
         ns["_translation"] = english
         self.assertEqual(ns["_"]("Current"), "Current")
+        self.assertEqual(ns["_"](ns["MSG_UNEXPECTED_APPLY_ERROR"]), ns["MSG_UNEXPECTED_APPLY_ERROR"])
 
     @unittest.skipUnless(shutil.which("xgettext"), "xgettext (gettext) is not installed")
     def test_11_pot_matches_source(self):

@@ -98,6 +98,8 @@ def run_scenario(steps, view_fn=view):
     app.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
     toasts = []
     app.test_toasts = toasts
+    log = io.StringIO()
+    app.test_log = log  # アプリが標準出力に出したログ
     show_toast = app.show_toast
     app.show_toast = lambda message: (toasts.append(message), show_toast(message))
     results = {}
@@ -147,8 +149,8 @@ def run_scenario(steps, view_fn=view):
         sources.append(timeout_id)
 
     app.connect("activate", on_activate)
-    # アプリが起動時に出す状態表示はテストの出力に混ぜない
-    with contextlib.redirect_stdout(io.StringIO()):
+    # アプリが起動時に出す状態表示はテストの出力に混ぜない（app.test_log で参照できる）
+    with contextlib.redirect_stdout(log):
         app.run([])
     # 残ったイベントを処理して片付ける
     context = GLib.MainContext.default()
@@ -428,6 +430,189 @@ class GuiNormalFailureNoBannerTest(BannerScenarioTestCase):
         before, s = self.state("write failed"), self.state("preflight failed")
         self.assertEqual(s["toasts"], before["toasts"] + [ns["MSG_USER_EXTENSIONS_DISABLED"]])
         self.assertIs(s["banner"], False)
+
+
+#----------------------------------------------------------------------------------------------------------------
+# 想定外の例外・表示の読み直しの失敗（GUI Exception Safety）
+#----------------------------------------------------------------------------------------------------------------
+# 例外の中身（画面に出てはいけない。ログには残る）
+SECRET_DETAIL = "internal-detail-7f3a"
+MSG_A = ns["MSG_UNEXPECTED_APPLY_ERROR"]
+MSG_B = ns["MSG_LAYOUT_CHECK_FAILED"]
+
+
+class FaultController:
+    """
+    シナリオの間だけ、次の失敗を起こせるようにする（ステップで切り替える）。
+      preflight_raise: このレイアウトの計画（事前確認）で想定外の例外を出す
+      refresh_fails  : 表示の読み直し（refresh_current_layout）で例外を出す
+    Apply の書き込みの失敗は FailureInjector で起こす
+    """
+
+    def __init__(self):
+        self.preflight_raise = set()
+        self.refresh_fails = False
+        self.injector = FailureInjector()
+
+    def install(self):
+        app_class = ns["OyoUiChangerApp"]
+        self.real_refresh = app_class.refresh_current_layout
+        self.real_planners = dict(ns["LAYOUT_PLANNERS"])
+        controller = self
+
+        def refresh(app_self):
+            if controller.refresh_fails:
+                raise RuntimeError(SECRET_DETAIL)
+            return controller.real_refresh(app_self)
+        app_class.refresh_current_layout = refresh
+
+        def planner_for(layout_id, real):
+            def planner():
+                if layout_id in controller.preflight_raise:
+                    raise RuntimeError(SECRET_DETAIL)
+                return real()
+            return planner
+        for layout_id, real in self.real_planners.items():
+            ns["LAYOUT_PLANNERS"][layout_id] = planner_for(layout_id, real)
+        self.injector.install()
+
+    def uninstall(self):
+        self.injector.uninstall()
+        ns["LAYOUT_PLANNERS"].clear()
+        ns["LAYOUT_PLANNERS"].update(self.real_planners)
+        ns["OyoUiChangerApp"].refresh_current_layout = self.real_refresh
+
+    def set(self, preflight_raise=(), refresh_fails=False, write_mode=None):
+        """次の Apply のための失敗の設定（Apply ごとに書き込みの失敗の状態も戻す）"""
+        def step(_app):
+            self.preflight_raise = set(preflight_raise)
+            self.refresh_fails = refresh_fails
+            self.injector.mode = write_mode
+            self.injector.in_rollback = False
+        return call(step)
+
+
+def fault_view(app):
+    return {
+        "current": app.current_layout,
+        "banner": app.rollback_banner.get_revealed(),
+        "toasts": list(app.test_toasts),
+        "log": app.test_log.getvalue(),
+        "settings": settings_snapshot(),
+    }
+
+
+class FaultScenarioTestCase(GuiScenarioTestCase):
+    CONTROLLER = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.display = display_available()
+        if cls.display:
+            cls.CONTROLLER.install()
+            try:
+                cls.results, cls.failure = run_scenario(cls.STEPS, view_fn=fault_view)
+            finally:
+                cls.CONTROLLER.uninstall()
+
+    def state(self, label):
+        self.assertIsNone(self.failure)
+        self.assertIn(label, self.results)
+        return self.results[label][0]
+
+    def assertNoDetailOnScreen(self, s):
+        for toast in s["toasts"]:
+            self.assertNotIn(SECRET_DETAIL, toast)
+            self.assertNotIn("RuntimeError", toast)
+            self.assertNotIn("Traceback", toast)
+
+
+UNEXPECTED = FaultController()
+
+
+class GuiUnexpectedErrorTest(FaultScenarioTestCase):
+    """事前確認での想定外の例外（Banner なし／Banner 表示中）"""
+
+    CONTROLLER = UNEXPECTED
+    STEPS = (check("start"),
+             UNEXPECTED.set(preflight_raise={"macos"}), click("macos"), PRESS, check("preflight error"),
+             # その後の Apply は普通に成功する（アプリは動き続ける）
+             UNEXPECTED.set(), click("windows10"), PRESS, check("later apply"),
+             # macOS で rollback に失敗して Banner を出したあと（macOS を選んだまま）、想定外の例外
+             UNEXPECTED.set(write_mode="rollback"), click("macos"), PRESS, check("banner shown"),
+             UNEXPECTED.set(preflight_raise={"macos"}), PRESS, check("error while banner shown"),
+             UNEXPECTED.set())
+
+    def test_u1_toast_a_only_and_nothing_changed(self):
+        start, s = self.state("start"), self.state("preflight error")
+        self.assertEqual(s["toasts"], start["toasts"] + [MSG_A])
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["settings"], start["settings"])
+        self.assertEqual(s["current"], start["current"])
+
+    def test_u2_details_in_log_not_on_screen(self):
+        s = self.state("preflight error")
+        self.assertNoDetailOnScreen(s)
+        self.assertIn("Traceback", s["log"])
+        self.assertIn(SECRET_DETAIL, s["log"])
+
+    def test_u3_app_keeps_working(self):
+        s = self.state("later apply")
+        self.assertEqual(s["toasts"][-1], "Applied Windows 10.")
+        self.assertEqual(s["current"], "windows10")
+
+    def test_u4_banner_kept_when_unexpected_error(self):
+        shown, s = self.state("banner shown"), self.state("error while banner shown")
+        self.assertIs(shown["banner"], True)
+        self.assertIs(s["banner"], True)
+        self.assertEqual(s["toasts"], shown["toasts"] + [MSG_A])
+        self.assertEqual(s["settings"], shown["settings"])
+        self.assertNoDetailOnScreen(s)
+
+
+REFRESH = FaultController()
+
+
+class GuiRefreshFailureTest(FaultScenarioTestCase):
+    """表示の読み直しに失敗したとき（Apply 成功後／ApplyWriteError 後／rollback 失敗と同時）"""
+
+    CONTROLLER = REFRESH
+    STEPS = (check("start"),
+             REFRESH.set(refresh_fails=True), click("windows10"), PRESS, check("success, refresh failed"),
+             REFRESH.set(refresh_fails=True, write_mode="write"), click("macos"), PRESS, check("write error, refresh failed"),
+             REFRESH.set(refresh_fails=True, write_mode="rollback"), PRESS, check("rollback error, refresh failed"),
+             REFRESH.set(), click("original"), PRESS, check("recovered"),
+             REFRESH.set())
+
+    def test_r1_success_then_refresh_failure(self):
+        start, s = self.state("start"), self.state("success, refresh failed")
+        # 書き込みは成功している（設定は変わった）が、確かめられないので B だけを出す
+        self.assertNotEqual(s["settings"], start["settings"])
+        self.assertEqual(s["toasts"], start["toasts"] + [MSG_B])
+        self.assertIs(s["banner"], False)
+        # 表示は前のまま（根拠なく custom にしない）
+        self.assertEqual(s["current"], start["current"])
+        self.assertNoDetailOnScreen(s)
+        self.assertIn(SECRET_DETAIL, s["log"])
+
+    def test_r2_write_error_then_refresh_failure(self):
+        before, s = self.state("success, refresh failed"), self.state("write error, refresh failed")
+        self.assertEqual(s["toasts"], before["toasts"] + ["Failed to write dock-position", MSG_B])
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["current"], before["current"])
+        self.assertNoDetailOnScreen(s)
+
+    def test_r3_rollback_error_and_refresh_failure_keeps_banner(self):
+        before, s = self.state("write error, refresh failed"), self.state("rollback error, refresh failed")
+        self.assertIs(s["banner"], True)
+        self.assertEqual(s["toasts"], before["toasts"] + [MSG_B])
+        self.assertNoDetailOnScreen(s)
+
+    def test_r4_recovers_after_faults_cleared(self):
+        s = self.state("recovered")
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["toasts"][-1], "Applied oYo Original.")
+        self.assertEqual(s["current"], "original")
 
 
 if __name__ == "__main__":

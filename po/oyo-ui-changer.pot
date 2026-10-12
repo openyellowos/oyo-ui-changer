@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oyo-ui-changer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 21:18+0900\n"
+"POT-Creation-Date: 2026-10-12 23:01+0900\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -28,6 +28,16 @@ msgid ""
 "The layout could not be applied, and some settings could not be restored. "
 "Your desktop may remain partly changed. Selecting a layout and applying it "
 "again may help."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "The layout could not be applied because of an unexpected error."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid ""
+"The current layout could not be checked. The display may not match your "
+"desktop."
 msgstr ""
 
 #: src/oyo-ui-changer.py

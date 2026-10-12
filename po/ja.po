@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oyo-ui-changer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 21:18+0900\n"
-"PO-Revision-Date: 2026-10-12 21:18+0900\n"
+"POT-Creation-Date: 2026-10-12 23:01+0900\n"
+"PO-Revision-Date: 2026-10-12 23:01+0900\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ja\n"
@@ -24,6 +24,14 @@ msgstr "GNOME Shell の拡張機能が無効になっています。レイアウ
 #: src/oyo-ui-changer.py
 msgid "The layout could not be applied, and some settings could not be restored. Your desktop may remain partly changed. Selecting a layout and applying it again may help."
 msgstr "レイアウトの適用に失敗し、一部の設定を元に戻せませんでした。デスクトップの設定が変更されたままの可能性があります。レイアウトを選び直して、再度適用すると改善する場合があります。"
+
+#: src/oyo-ui-changer.py
+msgid "The layout could not be applied because of an unexpected error."
+msgstr "予期しないエラーのため、レイアウトを適用できませんでした。"
+
+#: src/oyo-ui-changer.py
+msgid "The current layout could not be checked. The display may not match your desktop."
+msgstr "現在のレイアウトを確認できませんでした。表示が実際のデスクトップと異なる可能性があります。"
 
 #: src/oyo-ui-changer.py
 #, python-brace-format

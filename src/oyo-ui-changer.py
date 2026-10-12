@@ -6,6 +6,7 @@ import math
 import os
 import shutil
 import subprocess
+import traceback
 
 import gi
 
@@ -351,6 +352,10 @@ MSG_ROLLBACK_INCOMPLETE = N_(
     "The layout could not be applied, and some settings could not be restored. "
     "Your desktop may remain partly changed. Selecting a layout and applying it again may help."
 )
+# 想定外の例外で Apply できなかったとき（例外の中身は画面に出さず、ログに残す）
+MSG_UNEXPECTED_APPLY_ERROR = N_("The layout could not be applied because of an unexpected error.")
+# 表示の読み直し（現在のレイアウトの再確認）に失敗したとき
+MSG_LAYOUT_CHECK_FAILED = N_("The current layout could not be checked. The display may not match your desktop.")
 
 # dash-to-panel の panel-* が空のときに使う鍵（1台目のモニター。dash-to-panel が後でモニター ID に置き換える）
 PANEL_FALLBACK_MONITOR = "0"
@@ -970,6 +975,19 @@ class OyoUiChangerApp(Adw.Application):
         self.custom_notice.set_visible(self.current_layout == LAYOUT_CUSTOM)
         self.update_apply_button()
 
+    def safe_refresh(self):
+        """
+        refresh_current_layout() を行い、成功したら True。失敗したらログに残してトーストで知らせ、False を返す
+        （表示は前のまま。根拠なく custom にはしない）
+        """
+        try:
+            self.refresh_current_layout()
+        except Exception:
+            print("Could not refresh the current layout:\n" + traceback.format_exc(), end="")
+            self.show_toast(_(MSG_LAYOUT_CHECK_FAILED))
+            return False
+        return True
+
     def on_apply_clicked(self, button):
         layout_id = self.selected_layout
         name = LAYOUT_NAMES.get(layout_id, layout_id)
@@ -982,25 +1000,33 @@ class OyoUiChangerApp(Adw.Application):
             written = apply_layout(layout_id)
         except ApplyRollbackError as error:
             # 書き込みにも、元に戻すことにも失敗した: 一部が変わったままの可能性があるので、
-            # 状態を読み直し、消えない警告を出す（トーストは重ねない。詳細はログへ）
+            # 消えない警告を先に出してから状態を読み直す（読み直しに失敗しても警告は残す。詳細はログへ）
             print(f"Apply: {layout_id} failed: {error}; not restored: {error.failed}")
-            self.refresh_current_layout()
             self.rollback_banner.set_revealed(True)
+            self.safe_refresh()
             return
         except ApplyWriteError as error:
-            # 書き込み中の失敗: 元の値に戻してあるので、状態を読み直して表示を合わせる
-            self.refresh_current_layout()
+            # 書き込み中の失敗: 元の値に戻してあるので、原因を知らせてから状態を読み直して表示を合わせる
             self.show_toast(str(error))
+            self.safe_refresh()
             return
         except ApplyError as error:
             # 事前確認の失敗: 何も書いていないので、current_layout / selected_layout は変えない
             self.show_toast(str(error))
             return
+        except Exception:
+            # 想定外の例外（事前確認の途中など。書き込み中の例外は apply_plan が ApplyWriteError に包む）。
+            # 中身は画面に出さずログに残す。Banner の状態は変えない
+            print(f"Apply: {layout_id} failed with an unexpected error:\n{traceback.format_exc()}", end="")
+            self.show_toast(_(MSG_UNEXPECTED_APPLY_ERROR))
+            return
 
         print(f"Apply: {layout_id} wrote {written}")
         # Apply が成功したので、前回の「元に戻せなかった」警告は解除する
         self.rollback_banner.set_revealed(False)
-        self.refresh_current_layout()
+        if not self.safe_refresh():
+            # 書き込みは成功したが、適用されたかを確かめられない（読み直しの失敗はトーストで知らせた）
+            return
         if self.current_layout == layout_id:
             self.show_toast(_("Applied {name}.").format(name=name))
         else:
