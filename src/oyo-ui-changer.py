@@ -346,6 +346,11 @@ SHELL_SCHEMA = "org.gnome.shell"
 MSG_USER_EXTENSIONS_DISABLED = N_(
     "User extensions are disabled. Enable GNOME Shell extensions before applying this layout."
 )
+# Apply に失敗し、さらに一部の設定を元に戻せなかったときの消えない警告（復旧を保証しない表現にする）
+MSG_ROLLBACK_INCOMPLETE = N_(
+    "The layout could not be applied, and some settings could not be restored. "
+    "Your desktop may remain partly changed. Selecting a layout and applying it again may help."
+)
 
 # dash-to-panel の panel-* が空のときに使う鍵（1台目のモニター。dash-to-panel が後でモニター ID に置き換える）
 PANEL_FALLBACK_MONITOR = "0"
@@ -921,6 +926,7 @@ class OyoUiChangerApp(Adw.Application):
         self.window = None
         self.apply_button = None
         self.toast_overlay = None
+        self.rollback_banner = None
         self.connect("activate", self.on_activate)
         self.connect("startup", self.on_startup)
 
@@ -974,6 +980,13 @@ class OyoUiChangerApp(Adw.Application):
 
         try:
             written = apply_layout(layout_id)
+        except ApplyRollbackError as error:
+            # 書き込みにも、元に戻すことにも失敗した: 一部が変わったままの可能性があるので、
+            # 状態を読み直し、消えない警告を出す（トーストは重ねない。詳細はログへ）
+            print(f"Apply: {layout_id} failed: {error}; not restored: {error.failed}")
+            self.refresh_current_layout()
+            self.rollback_banner.set_revealed(True)
+            return
         except ApplyWriteError as error:
             # 書き込み中の失敗: 元の値に戻してあるので、状態を読み直して表示を合わせる
             self.refresh_current_layout()
@@ -985,6 +998,8 @@ class OyoUiChangerApp(Adw.Application):
             return
 
         print(f"Apply: {layout_id} wrote {written}")
+        # Apply が成功したので、前回の「元に戻せなかった」警告は解除する
+        self.rollback_banner.set_revealed(False)
         self.refresh_current_layout()
         if self.current_layout == layout_id:
             self.show_toast(_("Applied {name}.").format(name=name))
@@ -1085,8 +1100,15 @@ class OyoUiChangerApp(Adw.Application):
 
         self.toast_overlay = Adw.ToastOverlay(child=page)
 
+        # rollback が不完全だったときだけ出す、消えない警告（文はマークアップとして解釈しない）。
+        # 閉じても GNOME の設定は変えない
+        self.rollback_banner = Adw.Banner(title=_(MSG_ROLLBACK_INCOMPLETE), button_label=_("Dismiss"),
+                                          use_markup=False, revealed=False)
+        self.rollback_banner.connect("button-clicked", lambda banner: banner.set_revealed(False))
+
         toolbar_view = Adw.ToolbarView(content=self.toast_overlay)
         toolbar_view.add_top_bar(Adw.HeaderBar())
+        toolbar_view.add_top_bar(self.rollback_banner)
         toolbar_view.add_bottom_bar(bottom_bar)
 
         window.set_content(toolbar_view)

@@ -82,15 +82,22 @@ def check(label):
     return ("check", label)
 
 
-def run_scenario(steps):
+def call(func):
+    """任意の操作（func(app)）を 1 ステップとして実行する"""
+    return ("call", func)
+
+
+def run_scenario(steps, view_fn=view):
     """
     アプリを起動し、steps を STEP_INTERVAL_MS ごとに 1 つずつ実行する。
-    戻り値: ({チェック名: (view, 最後のトースト)}, 失敗の説明 or None)
+    戻り値: ({チェック名: (view_fn(app), 最後のトースト)}, 失敗の説明 or None)
+    出したトーストの一覧は app.test_toasts で参照できる
     """
     setup_settings()
     app = ns["OyoUiChangerApp"]()
     app.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
     toasts = []
+    app.test_toasts = toasts
     show_toast = app.show_toast
     app.show_toast = lambda message: (toasts.append(message), show_toast(message))
     results = {}
@@ -121,8 +128,10 @@ def run_scenario(steps):
                     a.cards[arg].emit("clicked")
                 elif kind == "press":
                     a.apply_button.emit("clicked")
+                elif kind == "call":
+                    arg(a)
                 else:
-                    results[arg] = (view(a), toasts[-1:])
+                    results[arg] = (view_fn(a), toasts[-1:])
             except Exception as error:  # noqa: BLE001 - 例外はテストの失敗として報告する
                 finish(a, f"{kind} {arg}: {type(error).__name__}: {error}")
                 return False
@@ -225,6 +234,200 @@ class GuiAllLayoutsTest(GuiScenarioTestCase):
 
     def test_6_original(self):
         self.assertCheckpoint("Original", ("original", "original", ["original"], False), "Applied oYo Original.")
+
+
+#----------------------------------------------------------------------------------------------------------------
+# rollback が不完全なときの消えない警告（Adw.Banner）
+#----------------------------------------------------------------------------------------------------------------
+class FailureInjector:
+    """
+    シナリオの間だけ Gio.Settings.set_value を差し替え、Apply を意図的に失敗させる（memory backend 上）。
+      mode None      : そのまま書く
+      mode "write"   : 最初に書く dock-position で失敗する（まだ何も書いていない → ApplyWriteError）
+      mode "rollback": Extension 一覧の書き込みで失敗し、rollback 中の dock-position の書き戻しも失敗する
+                       （→ ApplyRollbackError。Original 相当の状態から macOS を適用したときに起きる）
+    """
+
+    def __init__(self):
+        self.mode = None
+        self.in_rollback = False
+        self.real = None
+
+    def install(self):
+        self.real = Gio.Settings.set_value
+        injector = self
+
+        def fake(settings, key, value):
+            if injector.mode == "write" and key == "dock-position":
+                return False
+            if injector.mode == "rollback" and key == "enabled-extensions":
+                injector.in_rollback = True
+                return False
+            if injector.mode == "rollback" and injector.in_rollback and key == "dock-position":
+                return False
+            return injector.real(settings, key, value)
+        Gio.Settings.set_value = fake
+
+    def uninstall(self):
+        Gio.Settings.set_value = self.real
+
+    def mode_step(self, mode):
+        """次の Apply の失敗のさせ方を決めるステップ（Apply ごとに状態を戻す）"""
+        def step(_app):
+            self.mode = mode
+            self.in_rollback = False
+        return call(step)
+
+
+def settings_snapshot():
+    """管理対象の 5 スキーマの全キーのユーザー値"""
+    snapshot = {}
+    for schema_id, uuid in SCHEMAS:
+        settings = ns["open_settings"](schema_id, uuid)[0]
+        for key in settings.props.settings_schema.list_keys():
+            value = settings.get_user_value(key)
+            snapshot[(schema_id, key)] = None if value is None else value.print_(True)
+    return snapshot
+
+
+def banner_view(app):
+    banner = app.rollback_banner
+    return {
+        "current": app.current_layout,
+        "live": ns["confirm_layout"](ns["detect_layout"](ns["read_current_state"]())),
+        "badges": [k for k, badge in app.current_badges.items() if badge.get_visible()],
+        "selected": app.selected_layout,
+        "banner": banner.get_revealed(),
+        "title": banner.get_title(),
+        "button": banner.get_button_label(),
+        "markup": banner.get_use_markup(),
+        "toasts": list(app.test_toasts),
+        "settings": settings_snapshot(),
+    }
+
+
+class BannerScenarioTestCase(GuiScenarioTestCase):
+    INJECTOR = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.display = display_available()
+        if cls.display:
+            cls.INJECTOR.install()
+            try:
+                cls.results, cls.failure = run_scenario(cls.STEPS, view_fn=banner_view)
+            finally:
+                cls.INJECTOR.uninstall()
+
+    def state(self, label):
+        self.assertIsNone(self.failure)
+        self.assertIn(label, self.results)
+        return self.results[label][0]
+
+
+ROLLBACK_INJECTOR = FailureInjector()
+BANNER_TEXT = ns["MSG_ROLLBACK_INCOMPLETE"]
+
+
+class GuiRollbackBannerTest(BannerScenarioTestCase):
+    """Original から始め、macOS の Apply で rollback を失敗させる"""
+
+    INJECTOR = ROLLBACK_INJECTOR
+    STEPS = (check("start"),
+             ROLLBACK_INJECTOR.mode_step("rollback"), click("macos"), PRESS, check("rollback failed"),
+             click("original"), check("card selected"),
+             ROLLBACK_INJECTOR.mode_step("write"), PRESS, check("write failed"),
+             ROLLBACK_INJECTOR.mode_step(None), PRESS, check("applied"),
+             ROLLBACK_INJECTOR.mode_step("rollback"), click("macos"), PRESS, check("rollback failed again"),
+             call(lambda a: a.rollback_banner.emit("button-clicked")), check("dismissed"),
+             # Original に戻してから、もう一度 rollback を失敗させる
+             ROLLBACK_INJECTOR.mode_step(None), click("original"), PRESS, check("restored after dismiss"),
+             ROLLBACK_INJECTOR.mode_step("rollback"), click("macos"), PRESS, check("rollback failed after dismiss"),
+             ROLLBACK_INJECTOR.mode_step(None))
+
+    def test_b1_hidden_at_start_and_not_markup(self):
+        s = self.state("start")
+        self.assertIs(s["banner"], False)
+        self.assertIs(s["markup"], False)
+        self.assertEqual(s["title"], BANNER_TEXT)
+        self.assertEqual(s["button"], "Dismiss")
+
+    def test_b2_rollback_failure_shows_banner_without_toast(self):
+        start, s = self.state("start"), self.state("rollback failed")
+        self.assertIs(s["banner"], True)
+        self.assertEqual(s["toasts"], start["toasts"])
+        # 表示を読み直している（一部が戻らないので custom）
+        self.assertEqual(s["current"], s["live"])
+        self.assertEqual(s["current"], "custom")
+        self.assertEqual(s["badges"], [])
+
+    def test_b3_card_selection_keeps_banner(self):
+        s = self.state("card selected")
+        self.assertEqual(s["selected"], "original")
+        self.assertIs(s["banner"], True)
+
+    def test_b4_write_failure_uses_toast_and_keeps_banner(self):
+        before, s = self.state("card selected"), self.state("write failed")
+        self.assertEqual(s["toasts"], before["toasts"] + ["Failed to write dock-position"])
+        self.assertIs(s["banner"], True)
+
+    def test_b5_successful_apply_hides_banner(self):
+        s = self.state("applied")
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["toasts"][-1], "Applied oYo Original.")
+        self.assertEqual(s["current"], "original")
+
+    def test_b6_rollback_failure_again_shows_banner(self):
+        before, s = self.state("applied"), self.state("rollback failed again")
+        self.assertIs(s["banner"], True)
+        self.assertEqual(s["toasts"], before["toasts"])
+
+    def test_b7_dismiss_hides_banner_without_changing_settings(self):
+        before, s = self.state("rollback failed again"), self.state("dismissed")
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["settings"], before["settings"])
+        self.assertEqual(s["toasts"], before["toasts"])
+        self.assertEqual(s["current"], before["current"])
+
+    def test_b8_shown_again_after_dismiss(self):
+        restored = self.state("restored after dismiss")
+        self.assertIs(restored["banner"], False)
+        self.assertEqual(restored["current"], "original")
+        s = self.state("rollback failed after dismiss")
+        self.assertIs(s["banner"], True)
+        self.assertEqual(s["toasts"], restored["toasts"])
+
+
+NORMAL_FAILURE_INJECTOR = FailureInjector()
+
+
+def set_user_extensions_disabled(disabled):
+    def step(_app):
+        ns["open_settings"](ns["SHELL_SCHEMA"])[0].set_boolean("disable-user-extensions", disabled)
+        Gio.Settings.sync()
+    return call(step)
+
+
+class GuiNormalFailureNoBannerTest(BannerScenarioTestCase):
+    """通常の Apply 失敗（ApplyWriteError / ApplyError）はトーストだけで、Banner は出さない"""
+
+    INJECTOR = NORMAL_FAILURE_INJECTOR
+    STEPS = (check("start"),
+             NORMAL_FAILURE_INJECTOR.mode_step("write"), click("macos"), PRESS, check("write failed"),
+             NORMAL_FAILURE_INJECTOR.mode_step(None), set_user_extensions_disabled(True), PRESS,
+             check("preflight failed"),
+             set_user_extensions_disabled(False))
+
+    def test_n1_write_failure_toast_only(self):
+        start, s = self.state("start"), self.state("write failed")
+        self.assertEqual(s["toasts"], start["toasts"] + ["Failed to write dock-position"])
+        self.assertIs(s["banner"], False)
+        self.assertEqual(s["current"], "original")
+
+    def test_n2_preflight_failure_toast_only(self):
+        before, s = self.state("write failed"), self.state("preflight failed")
+        self.assertEqual(s["toasts"], before["toasts"] + [ns["MSG_USER_EXTENSIONS_DISABLED"]])
+        self.assertIs(s["banner"], False)
 
 
 if __name__ == "__main__":
