@@ -474,6 +474,17 @@ class ApplyWriteError(ApplyError):
     """書き込みの途中で失敗した（元の値に戻したあと）"""
 
 
+class ApplyRollbackError(ApplyWriteError):
+    """
+    書き込みの途中で失敗し、さらに元に戻せなかった（または戻ったことを確かめられなかった）設定がある。
+    メッセージは元の失敗のまま。failed は戻せなかった [(スキーマ ID, キー), ...]、元の失敗は __cause__
+    """
+
+    def __init__(self, message, failed):
+        super().__init__(message)
+        self.failed = list(failed)
+
+
 def open_settings(schema_id, uuid=None):
     schema, _source = lookup_schema(schema_id, uuid)
     if schema is None:
@@ -688,22 +699,57 @@ def confirm_layout(candidate):
 
 
 def rollback(written):
-    """記録した元のユーザー値に戻す。元にユーザー値がなかったキーは reset() する"""
+    """
+    記録した元のユーザー値に戻す。元にユーザー値がなかったキーは reset() する。
+    戻せなかった・戻ったことを確かめられなかったキーを [(スキーマ ID, キー), ...] で返す（全部戻れば空）。
+    1 つのキーで失敗しても、残りのキーは戻し続ける。失敗の理由はログに出す
+    """
+    failed = []
+
+    def fail(settings, key, reason):
+        item = (settings.props.schema_id, key)
+        print(f"rollback failed: {item[0]} {key}: {reason}")
+        if item not in failed:
+            failed.append(item)
+
     touched = []
     for settings, key, old_user_value in reversed(written):
         try:
             if old_user_value is None:
                 settings.reset(key)
-            else:
-                settings.set_value(key, old_user_value)
+            elif not settings.set_value(key, old_user_value):
+                fail(settings, key, "write rejected")
         except Exception as error:  # 戻せなかったキーがあっても、残りは戻す
-            print(f"rollback failed: {key}: {error}")
+            fail(settings, key, error)
         if settings not in touched:
             touched.append(settings)
     # delay() した Gio.Settings は delay-apply モードのままなので、apply() しないと反映されない
     for settings in touched:
-        settings.apply()
-    Gio.Settings.sync()
+        try:
+            settings.apply()
+        except Exception as error:  # 反映できなかった schema のキーは、戻ったことを確かめられない
+            for written_settings, key, _old in written:
+                if written_settings is settings:
+                    fail(settings, key, f"apply failed: {error}")
+    try:
+        Gio.Settings.sync()
+    except Exception as error:  # 保存を確かめられないので、全部を確かめられなかったとする
+        for settings, key, _old in written:
+            fail(settings, key, f"sync failed: {error}")
+    # 読み直して、元の状態（ユーザー値の有無と値）に戻ったか確かめる
+    for settings, key, old_user_value in written:
+        try:
+            current = settings.get_user_value(key)
+        except Exception as error:
+            fail(settings, key, f"could not read back: {error}")
+            continue
+        if old_user_value is None:
+            restored = current is None
+        else:
+            restored = current is not None and current.equal(old_user_value)
+        if not restored:
+            fail(settings, key, f"not restored (now {None if current is None else current.print_(False)})")
+    return failed
 
 
 def apply_plan(plan):
@@ -728,10 +774,20 @@ def apply_plan(plan):
             written.extend(old_values)
         Gio.Settings.sync()
     except Exception as error:
-        rollback(written)
+        try:
+            failed = rollback(written)
+        except Exception as rollback_error:  # rollback 自体が想定外に失敗しても、元の失敗を失わない
+            print(f"rollback failed: {rollback_error}")
+            failed = list(dict.fromkeys((settings.props.schema_id, key) for settings, key, _old in written))
+        if isinstance(error, ApplyWriteError):
+            message = str(error)
+        else:
+            message = _("Failed to apply the layout: {error}").format(error=error)
+        if failed:
+            raise ApplyRollbackError(message, failed) from error
         if isinstance(error, ApplyWriteError):
             raise
-        raise ApplyWriteError(_("Failed to apply the layout: {error}").format(error=error)) from error
+        raise ApplyWriteError(message) from error
     return [(settings.props.schema_id, key) for settings, key, _old in written]
 
 
