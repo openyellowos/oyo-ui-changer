@@ -13,3 +13,6 @@ debian/files
 debian/*debhelper-build-stamp
 debian/tmp/
 
+# Python のキャッシュ（テスト実行時に tests/ に作られる）
+__pycache__/
+
