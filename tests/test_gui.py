@@ -49,7 +49,11 @@ def display_available():
 
 
 def setup_settings():
-    """旧テストの前提（新しいプロセスの memory backend に Original 相当を作る）を再現する"""
+    """
+    開始状態: 完全な Original（旧テストの前提に Original を Apply したもの）。
+    旧テストは Dock の有効化と位置だけの Original 相当で始めていたが、Custom 判定（confirm_layout）では
+    管理対象のほかの設定が既定値のままだと custom になるため、Original を適用した状態から始める
+    """
     for schema_id, uuid in SCHEMAS:
         settings = ns["open_settings"](schema_id, uuid)[0]
         for key in settings.props.settings_schema.list_keys():
@@ -57,6 +61,7 @@ def setup_settings():
     ns["open_settings"](ns["SHELL_SCHEMA"])[0].set_strv("enabled-extensions", ["ding@rastersoft.com", DOCK])
     ns["open_settings"](ns["DOCK_SCHEMA"], DOCK)[0].set_string("dock-position", "LEFT")
     Gio.Settings.sync()
+    ns["apply_layout"]("original")
 
 
 def view(app):

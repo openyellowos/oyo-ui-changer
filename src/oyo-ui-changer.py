@@ -847,10 +847,11 @@ class OyoUiChangerApp(Adw.Application):
         )
 
         # 起動時に現在の設定を読み取り、今のレイアウトを判定する（read-only）
+        # 管理対象の設定が手で変えられていれば custom（confirm_layout）
         state = self.state_reader()
         print_state(state)
         print(f"=== layout facts: {layout_facts(state)}")
-        self.current_layout = detect_layout(state)
+        self.current_layout = confirm_layout(detect_layout(state))
         print(f"=== current layout: {self.current_layout}")
 
     def update_apply_button(self):
@@ -872,7 +873,7 @@ class OyoUiChangerApp(Adw.Application):
 
     def refresh_current_layout(self):
         """設定を読み直して current_layout と表示を更新する"""
-        self.current_layout = detect_layout(self.state_reader())
+        self.current_layout = confirm_layout(detect_layout(self.state_reader()))
         for layout_id, badge in self.current_badges.items():
             badge.set_visible(layout_id == self.current_layout)
         self.custom_notice.set_visible(self.current_layout == LAYOUT_CUSTOM)
