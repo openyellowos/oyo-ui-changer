@@ -5,5 +5,11 @@ export DH_VERBOSE=1
 
 # GTK4/libadwaita 版（検証用パッケージ oyo-ui-changer-gtk）だけの追加処理。
 # .py を名前を変えて実行権限つきで入れる（dh_install では名前を変えられないため）
+# po/*.po を msgfmt --check でコンパイルし、翻訳（.mo）を入れる（.mo はリポジトリに置かない）
 execute_after_dh_install:
 	install -D -m 0755 src/oyo-ui-changer.py debian/oyo-ui-changer-gtk/usr/bin/oyo-ui-changer-gtk
+	for po in po/*.po; do \
+		lang=$$(basename $$po .po); \
+		install -d debian/oyo-ui-changer-gtk/usr/share/locale/$$lang/LC_MESSAGES || exit 1; \
+		msgfmt --check -o debian/oyo-ui-changer-gtk/usr/share/locale/$$lang/LC_MESSAGES/oyo-ui-changer.mo $$po || exit 1; \
+	done

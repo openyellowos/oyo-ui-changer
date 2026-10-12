@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import gettext
 import json
 import math
 import os
@@ -12,6 +13,34 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
+
+
+#----------------------------------------------------------------------------------------------------------------
+# 表示文言の翻訳（gettext）
+#   - 翻訳するのは画面に出す文言だけ（アプリ ID、レイアウト ID、GSettings のキーと値、Extension 名、ログは翻訳しない）
+#   - 言語は gettext の標準どおり LANGUAGE → LC_ALL → LC_MESSAGES → LANG で決まり、翻訳がなければ英語のまま
+#   - 翻訳は使う時点で _() を呼んで行う（定数には N_() で印だけを付ける）。差し込みは名前付きの {name} を使う
+#----------------------------------------------------------------------------------------------------------------
+GETTEXT_DOMAIN = "oyo-ui-changer"
+
+
+def find_localedir():
+    """インストール先では /usr/bin から見た ../share/locale。なければ None（gettext の既定の場所）"""
+    path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "share", "locale"))
+    return path if os.path.isdir(path) else None
+
+
+_translation = gettext.translation(GETTEXT_DOMAIN, localedir=find_localedir(), fallback=True)
+
+
+def _(message):
+    """表示文言を翻訳する（翻訳がなければ英語のまま）"""
+    return _translation.gettext(message)
+
+
+def N_(message):
+    """翻訳対象の印だけを付ける（翻訳は使う時点で _() を呼んで行う）"""
+    return message
 
 
 #----------------------------------------------------------------------------------------------------------------
@@ -314,7 +343,7 @@ ARCMENU_SCHEMA = "org.gnome.shell.extensions.arcmenu"
 WM_SCHEMA = "org.gnome.desktop.wm.preferences"
 SHELL_SCHEMA = "org.gnome.shell"
 
-MSG_USER_EXTENSIONS_DISABLED = (
+MSG_USER_EXTENSIONS_DISABLED = N_(
     "User extensions are disabled. Enable GNOME Shell extensions before applying this layout."
 )
 
@@ -448,13 +477,13 @@ class ApplyWriteError(ApplyError):
 def open_settings(schema_id, uuid=None):
     schema, _source = lookup_schema(schema_id, uuid)
     if schema is None:
-        raise ApplyError(f"Settings schema not found: {schema_id}")
+        raise ApplyError(_("Settings schema not found: {schema}").format(schema=schema_id))
     return Gio.Settings.new_full(schema, None, None), schema
 
 
 def require_installed(uuid, name):
     if not extension_dirs(uuid):
-        raise ApplyError(f"{name} is not installed.")
+        raise ApplyError(_("{name} is not installed.").format(name=name))
 
 
 def check_targets(settings, schema, targets):
@@ -462,11 +491,11 @@ def check_targets(settings, schema, targets):
     changes = []
     for key, value in targets.items():
         if not schema.has_key(key):
-            raise ApplyError(f"Setting not found: {schema.get_id()} {key}")
+            raise ApplyError(_("Setting not found: {schema} {key}").format(schema=schema.get_id(), key=key))
         if not settings.is_writable(key):
-            raise ApplyError(f"Setting is not writable: {schema.get_id()} {key}")
+            raise ApplyError(_("Setting is not writable: {schema} {key}").format(schema=schema.get_id(), key=key))
         if not schema.get_key(key).range_check(value):
-            raise ApplyError(f"Invalid value for {schema.get_id()} {key}")
+            raise ApplyError(_("Invalid value for {schema} {key}").format(schema=schema.get_id(), key=key))
         if not settings.get_value(key).equal(value):
             changes.append((key, value))
     return changes
@@ -477,9 +506,9 @@ def open_shell():
     shell, shell_schema = open_settings(SHELL_SCHEMA)
     for key in ("enabled-extensions", "disabled-extensions", "disable-user-extensions"):
         if not shell_schema.has_key(key):
-            raise ApplyError(f"Setting not found: {SHELL_SCHEMA} {key}")
+            raise ApplyError(_("Setting not found: {schema} {key}").format(schema=SHELL_SCHEMA, key=key))
     if shell.get_boolean("disable-user-extensions"):
-        raise ApplyError(MSG_USER_EXTENSIONS_DISABLED)
+        raise ApplyError(_(MSG_USER_EXTENSIONS_DISABLED))
     return shell, shell_schema
 
 
@@ -506,7 +535,7 @@ def read_monitor_json(settings, key):
     """dash-to-panel のモニターごとの JSON を読む。読めなければ ApplyError（知らないデータを壊さないため）"""
     values = monitor_values(settings.get_string(key))
     if values is None:
-        raise ApplyError(f"Could not read dash-to-panel setting: {key}")
+        raise ApplyError(_("Could not read dash-to-panel setting: {key}").format(key=key))
     return values
 
 
@@ -568,7 +597,7 @@ def plan_panel_layout(elements_value, arcmenu_targets, *,
 
     for key in ("panel-positions", "panel-sizes", "panel-element-positions", "panel-lengths"):
         if not panel_schema.has_key(key):
-            raise ApplyError(f"Setting not found: {PANEL_SCHEMA} {key}")
+            raise ApplyError(_("Setting not found: {schema} {key}").format(schema=PANEL_SCHEMA, key=key))
 
     # panel-* は、今の値と中身が違うときだけ目標に入れる（JSON の書式の違いだけでは書かない）
     panel_targets = {}
@@ -637,7 +666,7 @@ LAYOUT_PLANNERS = {
 def plan_layout(layout_id):
     planner = LAYOUT_PLANNERS.get(layout_id)
     if planner is None:
-        raise ApplyError("Not implemented yet.")
+        raise ApplyError(_("Not implemented yet."))
     return planner()
 
 
@@ -690,7 +719,7 @@ def apply_plan(plan):
             try:
                 for key, value in changes:
                     if not settings.set_value(key, value):
-                        raise ApplyWriteError(f"Failed to write {key}")
+                        raise ApplyWriteError(_("Failed to write {key}").format(key=key))
                 settings.apply()
             except Exception:
                 # まだ反映していない変更は捨てる（反映済みの schema は rollback で戻す）
@@ -702,7 +731,7 @@ def apply_plan(plan):
         rollback(written)
         if isinstance(error, ApplyWriteError):
             raise
-        raise ApplyWriteError(f"Failed to apply the layout: {error}") from error
+        raise ApplyWriteError(_("Failed to apply the layout: {error}").format(error=error)) from error
     return [(settings.props.schema_id, key) for settings, key, _old in written]
 
 
@@ -884,7 +913,7 @@ class OyoUiChangerApp(Adw.Application):
         name = LAYOUT_NAMES.get(layout_id, layout_id)
         if layout_id not in LAYOUT_PLANNERS:
             # 適用処理のないレイアウト（何も変更しない）
-            self.show_toast("Not implemented yet.")
+            self.show_toast(_("Not implemented yet."))
             return
 
         try:
@@ -902,9 +931,9 @@ class OyoUiChangerApp(Adw.Application):
         print(f"Apply: {layout_id} wrote {written}")
         self.refresh_current_layout()
         if self.current_layout == layout_id:
-            self.show_toast(f"Applied {name}.")
+            self.show_toast(_("Applied {name}.").format(name=name))
         else:
-            self.show_toast(f"Could not confirm that {name} was applied.")
+            self.show_toast(_("Could not confirm that {name} was applied.").format(name=name))
 
     def create_card(self, layout_id, name):
         title = Gtk.Label(label=name, xalign=0, hexpand=True)
@@ -915,7 +944,7 @@ class OyoUiChangerApp(Adw.Application):
         check_icon.add_css_class("layout-check")
 
         # 今 GNOME に適用されているレイアウトの印（選択中の印とは別。選択を変えても動かない）
-        current_badge = Gtk.Label(label="Current", valign=Gtk.Align.CENTER)
+        current_badge = Gtk.Label(label=_("Current"), valign=Gtk.Align.CENTER)
         current_badge.add_css_class("caption")
         current_badge.add_css_class("current-badge")
         current_badge.set_visible(layout_id == self.current_layout)
@@ -951,21 +980,21 @@ class OyoUiChangerApp(Adw.Application):
 
         # 選択だけでは適用せず、Apply を押したときに適用する
         # （カードの初期選択より先に作り、最初から押せない状態にしておく）
-        self.apply_button = Gtk.Button(label="Apply", sensitive=False)
+        self.apply_button = Gtk.Button(label=_("Apply"), sensitive=False)
         self.apply_button.add_css_class("suggested-action")
         self.apply_button.connect("clicked", self.on_apply_clicked)
 
         page = Adw.PreferencesPage()
 
         group = Adw.PreferencesGroup(
-            title="Desktop Layout",
-            description="Choose a desktop layout style."
+            title=_("Desktop Layout"),
+            description=_("Choose a desktop layout style.")
         )
 
         # 今の状態がどのレイアウトにも一致しないときの案内（Custom 用のカードは作らない）
         self.custom_notice = Gtk.Box(spacing=8, margin_bottom=12)
         self.custom_notice.append(Gtk.Image(icon_name="dialog-information-symbolic"))
-        notice_label = Gtk.Label(label="Current desktop layout is customized.", xalign=0, wrap=True)
+        notice_label = Gtk.Label(label=_("Current desktop layout is customized."), xalign=0, wrap=True)
         self.custom_notice.append(notice_label)
         self.custom_notice.add_css_class("dim-label")
         self.custom_notice.set_visible(self.current_layout == LAYOUT_CUSTOM)

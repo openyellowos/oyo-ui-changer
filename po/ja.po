@@ -1,0 +1,96 @@
+# Japanese translations for oyo-ui-changer package.
+# Copyright (C) 2026 open.Yellow.os
+# This file is distributed under the same license as the oyo-ui-changer package.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: oyo-ui-changer\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-12 19:50+0900\n"
+"PO-Revision-Date: 2026-10-12 19:50+0900\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/oyo-ui-changer.py
+msgid "User extensions are disabled. Enable GNOME Shell extensions before applying this layout."
+msgstr "GNOME Shell の拡張機能が無効になっています。レイアウトを適用するには、拡張機能を有効にしてください。"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Settings schema not found: {schema}"
+msgstr "設定スキーマが見つかりません: {schema}"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "{name} is not installed."
+msgstr "{name} がインストールされていません。"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Setting not found: {schema} {key}"
+msgstr "設定項目が見つかりません: {schema} {key}"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Setting is not writable: {schema} {key}"
+msgstr "設定項目に書き込めません: {schema} {key}"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Invalid value for {schema} {key}"
+msgstr "設定値が正しくありません: {schema} {key}"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Could not read dash-to-panel setting: {key}"
+msgstr "dash-to-panel の設定を読み取れませんでした: {key}"
+
+#: src/oyo-ui-changer.py
+msgid "Not implemented yet."
+msgstr "まだ実装されていません。"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Failed to write {key}"
+msgstr "{key} の書き込みに失敗しました"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Failed to apply the layout: {error}"
+msgstr "レイアウトの適用に失敗しました: {error}"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Applied {name}."
+msgstr "{name} を適用しました。"
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Could not confirm that {name} was applied."
+msgstr "{name} が正しく適用されたことを確認できませんでした。"
+
+#: src/oyo-ui-changer.py
+msgid "Current"
+msgstr "使用中"
+
+#: src/oyo-ui-changer.py
+msgid "Apply"
+msgstr "適用"
+
+#: src/oyo-ui-changer.py
+msgid "Desktop Layout"
+msgstr "デスクトップのレイアウト"
+
+#: src/oyo-ui-changer.py
+msgid "Choose a desktop layout style."
+msgstr "お好みのレイアウトを選択してください。"
+
+#: src/oyo-ui-changer.py
+msgid "Current desktop layout is customized."
+msgstr "現在のレイアウトはカスタマイズされています。"

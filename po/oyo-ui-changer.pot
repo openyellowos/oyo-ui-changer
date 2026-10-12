@@ -1,0 +1,98 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the oyo-ui-changer package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: oyo-ui-changer\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-12 19:50+0900\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/oyo-ui-changer.py
+msgid ""
+"User extensions are disabled. Enable GNOME Shell extensions before applying "
+"this layout."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Settings schema not found: {schema}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "{name} is not installed."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Setting not found: {schema} {key}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Setting is not writable: {schema} {key}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Invalid value for {schema} {key}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Could not read dash-to-panel setting: {key}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Not implemented yet."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Failed to write {key}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Failed to apply the layout: {error}"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Applied {name}."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+#, python-brace-format
+msgid "Could not confirm that {name} was applied."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Current"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Apply"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Desktop Layout"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Choose a desktop layout style."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Current desktop layout is customized."
+msgstr ""

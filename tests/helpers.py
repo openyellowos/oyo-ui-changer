@@ -7,6 +7,8 @@ oYo UI Changer（libadwaita 版）のテスト共通基盤
       3. 外部コマンド（dconf など）の起動を遮断する
      どれかを確認できなければ UnsafeTestEnvironment で止める（テストを実行しない）
   - アプリ本体を GUI を起動せずに読み込む（load_app）
+  - 表示文言を英語に固定する（テストのプロセスだけで LANGUAGE=C。読み込み後に翻訳なしを確かめる）
+    日本語を確かめるテストは、ns["_translation"] をそのテストの間だけ差し替える
 
 使い方:
     from helpers import load_app
@@ -15,6 +17,7 @@ oYo UI Changer（libadwaita 版）のテスト共通基盤
 """
 
 import ast
+import gettext
 import os
 import subprocess
 import sys
@@ -24,6 +27,8 @@ import sys
 if "gi.repository.Gio" in sys.modules:
     raise ImportError("helpers must be imported before gi.repository.Gio (cannot guarantee the memory backend)")
 os.environ["GSETTINGS_BACKEND"] = "memory"
+# 表示文言は英語で確かめる（gettext は LANGUAGE=C で翻訳を探さない。このテストのプロセスだけの設定）
+os.environ["LANGUAGE"] = "C"
 
 from gi.repository import Gio, GLib  # noqa: E402
 
@@ -168,4 +173,7 @@ def load_app(path=APP_PATH):
     ensure_memory_backend()
     if "app" in ns:
         raise UnsafeTestEnvironment("application object was created while loading")
+    # 翻訳が読み込まれていない（英語のまま）ことを確かめる
+    if type(ns.get("_translation")) is not gettext.NullTranslations:
+        raise RuntimeError(f"tests must run without translations, got {type(ns.get('_translation')).__name__}")
     return ns
