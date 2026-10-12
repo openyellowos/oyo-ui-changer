@@ -3,3 +3,7 @@ export DH_VERBOSE=1
 %:
 	dh $@
 
+# GTK4/libadwaita 版（検証用パッケージ oyo-ui-changer-gtk）だけの追加処理。
+# .py を名前を変えて実行権限つきで入れる（dh_install では名前を変えられないため）
+execute_after_dh_install:
+	install -D -m 0755 src/oyo-ui-changer.py debian/oyo-ui-changer-gtk/usr/bin/oyo-ui-changer-gtk

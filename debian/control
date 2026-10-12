@@ -12,3 +12,11 @@ Architecture: all
 Depends: ${misc:Depends}, zenity, bash, coreutils, xdg-utils
 Description: oYo UI changer (Zenity-based)
  Simple UI changer for open.Yellow.os using Zenity dialogs.
+
+Package: oyo-ui-changer-gtk
+Architecture: all
+Depends: ${misc:Depends}, python3, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0 (>= 4.12), gir1.2-adw-1 (>= 1.4)
+Description: oYo UI changer (GTK4/libadwaita preview)
+ Preview build of the GTK4/libadwaita version of the open.Yellow.os UI
+ changer, installed as oyo-ui-changer-gtk. It can be installed alongside
+ the Zenity-based oyo-ui-changer and does not replace it.

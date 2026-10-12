@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=oYo UI Changer (GTK)
+GenericName=UI Changer
+Comment=Change desktop UI settings on open.Yellow.os
+Exec=oyo-ui-changer-gtk
+Icon=gnome-system
+Terminal=false
+Categories=System;
