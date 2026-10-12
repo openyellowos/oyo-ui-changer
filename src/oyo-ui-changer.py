@@ -641,6 +641,23 @@ def plan_layout(layout_id):
     return planner()
 
 
+def confirm_layout(candidate):
+    """
+    detect_layout() の候補が、そのレイアウトの管理対象の設定と完全に一致しているか確かめる（書き込みはしない）。
+    候補の plan_layout() の変更予定が 0 件なら候補を、1 件以上・計画を作れない・候補が custom / 不明なら custom を返す。
+    ほかのレイアウトは調べない
+    """
+    if candidate not in LAYOUT_PLANNERS:
+        return LAYOUT_CUSTOM
+    try:
+        plan = plan_layout(candidate)
+    except Exception:  # 事前確認の失敗（ApplyError）も想定外の例外も、一致を確かめられないので custom
+        return LAYOUT_CUSTOM
+    if any(changes for _settings, changes in plan):
+        return LAYOUT_CUSTOM
+    return candidate
+
+
 def rollback(written):
     """記録した元のユーザー値に戻す。元にユーザー値がなかったキーは reset() する"""
     touched = []
