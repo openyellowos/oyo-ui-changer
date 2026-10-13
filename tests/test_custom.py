@@ -2,7 +2,8 @@
 Custom 判定（2 段階方式）のテスト
 
   1. 既存の detect_layout() で候補を決める
-  2. confirm_layout(候補): 候補の plan_layout() の変更予定が 0 件なら候補、1 件以上・計画の失敗なら custom
+  2. confirm_layout(候補): 候補の plan_layout() の変更予定が 0 件なら候補、1 件以上・事前確認の失敗（ApplyError）なら custom、
+     計画の途中の想定外の例外なら unknown
 
 Phase 1（最小）
   A: 4 プリセットを Apply した状態 → 候補のまま一致                     4 件
@@ -189,11 +190,12 @@ class ConfirmLayoutBoundaryTest(CustomTestCase):
                 self.assertEqual(confirm_layout("windows10"), "custom")
                 self.assertEqual(self.planned, ["windows10"])
 
-    def test_c10_unexpected_errors_are_custom(self):
+    def test_c10_unexpected_errors_are_unknown(self):
+        # 想定外の例外では一致を確かめられないので、custom ではなく unknown（状態を確認できない）
         for error in (RuntimeError("boom"), GLib.Error("boom"), KeyError("boom"), TypeError("boom")):
             with self.subTest(error=type(error).__name__):
                 self.stub_plan(error=error)
-                self.assertEqual(confirm_layout("macos"), "custom")
+                self.assertEqual(confirm_layout("macos"), "unknown")
 
     # ---- 書き込みをしない ----
     def test_c11_no_settings_writes_while_confirming(self):

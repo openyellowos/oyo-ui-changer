@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oyo-ui-changer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 23:01+0900\n"
-"PO-Revision-Date: 2026-10-12 23:01+0900\n"
+"POT-Creation-Date: 2026-10-13 19:45+0900\n"
+"PO-Revision-Date: 2026-10-13 19:45+0900\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: ja\n"
@@ -32,6 +32,18 @@ msgstr "予期しないエラーのため、レイアウトを適用できませ
 #: src/oyo-ui-changer.py
 msgid "The current layout could not be checked. The display may not match your desktop."
 msgstr "現在のレイアウトを確認できませんでした。表示が実際のデスクトップと異なる可能性があります。"
+
+#: src/oyo-ui-changer.py
+msgid "The current layout could not be checked. Layouts cannot be applied until it is checked."
+msgstr "現在のレイアウトを確認できませんでした。確認できるまで、レイアウトは適用できません。"
+
+#: src/oyo-ui-changer.py
+msgid "Check Again"
+msgstr "再確認"
+
+#: src/oyo-ui-changer.py
+msgid "The current layout still could not be checked."
+msgstr "現在のレイアウトを、まだ確認できません。"
 
 #: src/oyo-ui-changer.py
 #, python-brace-format

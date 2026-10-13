@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: oyo-ui-changer\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-12 23:01+0900\n"
+"POT-Creation-Date: 2026-10-13 19:45+0900\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -38,6 +38,20 @@ msgstr ""
 msgid ""
 "The current layout could not be checked. The display may not match your "
 "desktop."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid ""
+"The current layout could not be checked. Layouts cannot be applied until it "
+"is checked."
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "Check Again"
+msgstr ""
+
+#: src/oyo-ui-changer.py
+msgid "The current layout still could not be checked."
 msgstr ""
 
 #: src/oyo-ui-changer.py

@@ -87,14 +87,19 @@ def call(func):
     return ("call", func)
 
 
-def run_scenario(steps, view_fn=view):
+# unknown の警告の「再確認」を押す
+CHECK_AGAIN = call(lambda a: a.unknown_banner.emit("button-clicked"))
+
+
+def run_scenario(steps, view_fn=view, state_reader=None):
     """
     アプリを起動し、steps を STEP_INTERVAL_MS ごとに 1 つずつ実行する。
+    state_reader を渡すと、アプリはそれで設定を読み取る（読み取りの失敗を起こすため）。
     戻り値: ({チェック名: (view_fn(app), 最後のトースト)}, 失敗の説明 or None)
     出したトーストの一覧は app.test_toasts で参照できる
     """
     setup_settings()
-    app = ns["OyoUiChangerApp"]()
+    app = ns["OyoUiChangerApp"]() if state_reader is None else ns["OyoUiChangerApp"](state_reader=state_reader)
     app.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
     toasts = []
     app.test_toasts = toasts
@@ -496,6 +501,7 @@ def fault_view(app):
     return {
         "current": app.current_layout,
         "banner": app.rollback_banner.get_revealed(),
+        "unknown": app.unknown_banner.get_revealed(),
         "toasts": list(app.test_toasts),
         "log": app.test_log.getvalue(),
         "settings": settings_snapshot(),
@@ -574,14 +580,19 @@ REFRESH = FaultController()
 
 
 class GuiRefreshFailureTest(FaultScenarioTestCase):
-    """表示の読み直しに失敗したとき（Apply 成功後／ApplyWriteError 後／rollback 失敗と同時）"""
+    """
+    表示の読み直しに失敗したとき（Apply 成功後／ApplyWriteError 後／rollback 失敗と同時）。
+    読み直しに失敗すると unknown になり Apply できないので、次の Apply の前に「再確認」で確認できる状態に戻す
+    """
 
     CONTROLLER = REFRESH
     STEPS = (check("start"),
              REFRESH.set(refresh_fails=True), click("windows10"), PRESS, check("success, refresh failed"),
+             REFRESH.set(), CHECK_AGAIN,
              REFRESH.set(refresh_fails=True, write_mode="write"), click("macos"), PRESS, check("write error, refresh failed"),
+             REFRESH.set(), CHECK_AGAIN,
              REFRESH.set(refresh_fails=True, write_mode="rollback"), PRESS, check("rollback error, refresh failed"),
-             REFRESH.set(), click("original"), PRESS, check("recovered"),
+             REFRESH.set(), CHECK_AGAIN, click("original"), PRESS, check("recovered"),
              REFRESH.set())
 
     def test_r1_success_then_refresh_failure(self):
@@ -590,8 +601,9 @@ class GuiRefreshFailureTest(FaultScenarioTestCase):
         self.assertNotEqual(s["settings"], start["settings"])
         self.assertEqual(s["toasts"], start["toasts"] + [MSG_B])
         self.assertIs(s["banner"], False)
-        # 表示は前のまま（根拠なく custom にしない）
-        self.assertEqual(s["current"], start["current"])
+        # 古い「使用中」は残さず unknown にする（根拠なく custom にもしない）
+        self.assertEqual(s["current"], "unknown")
+        self.assertIs(s["unknown"], True)
         self.assertNoDetailOnScreen(s)
         self.assertIn(SECRET_DETAIL, s["log"])
 
@@ -599,20 +611,345 @@ class GuiRefreshFailureTest(FaultScenarioTestCase):
         before, s = self.state("success, refresh failed"), self.state("write error, refresh failed")
         self.assertEqual(s["toasts"], before["toasts"] + ["Failed to write dock-position", MSG_B])
         self.assertIs(s["banner"], False)
-        self.assertEqual(s["current"], before["current"])
+        self.assertEqual(s["current"], "unknown")
+        self.assertIs(s["unknown"], True)
         self.assertNoDetailOnScreen(s)
 
     def test_r3_rollback_error_and_refresh_failure_keeps_banner(self):
         before, s = self.state("write error, refresh failed"), self.state("rollback error, refresh failed")
         self.assertIs(s["banner"], True)
+        self.assertIs(s["unknown"], True)
         self.assertEqual(s["toasts"], before["toasts"] + [MSG_B])
         self.assertNoDetailOnScreen(s)
 
     def test_r4_recovers_after_faults_cleared(self):
         s = self.state("recovered")
         self.assertIs(s["banner"], False)
+        self.assertIs(s["unknown"], False)
         self.assertEqual(s["toasts"][-1], "Applied oYo Original.")
         self.assertEqual(s["current"], "original")
+
+
+#----------------------------------------------------------------------------------------------------------------
+# 現在のレイアウトを確認できない（unknown）とき（Startup Exception Safety）
+#----------------------------------------------------------------------------------------------------------------
+MSG_UNKNOWN = ns["MSG_LAYOUT_UNKNOWN"]
+MSG_STILL = ns["MSG_LAYOUT_STILL_UNKNOWN"]
+
+
+class ReaderControl:
+    """
+    アプリに渡す設定の読み取り処理（memory backend の実際の値を読む）。ステップで失敗のさせ方を切り替える。
+      mode None   : そのまま読む
+      mode "raise": 例外を出す
+      mode "shell": shell の enabled-extensions が読めなかった状態を返す
+      mode "custom": dock-position を RIGHT として返す（読めた値が一致しない、正常な custom）
+    """
+
+    def __init__(self, mode=None):
+        self.start_mode = mode
+        self.mode = mode
+
+    def read(self):
+        if self.mode == "raise":
+            raise RuntimeError(SECRET_DETAIL)
+        state = ns["read_current_state"]()
+        if self.mode == "shell":
+            state["shell"]["keys"]["enabled-extensions"]["value"] = None
+        elif self.mode == "custom":
+            state["dash-to-dock"]["keys"]["dock-position"]["value"] = "RIGHT"
+        return state
+
+    def set(self, mode):
+        return call(lambda _app: setattr(self, "mode", mode))
+
+
+def unknown_view(app):
+    top_bars = app.rollback_banner.get_parent()
+    return {
+        "current": app.current_layout,
+        "selected": app.selected_layout,
+        "badges": [k for k, badge in app.current_badges.items() if badge.get_visible()],
+        "active": [k for k, card in app.cards.items() if card.get_active()],
+        "notice": app.custom_notice.get_visible(),
+        "apply": app.apply_button.get_sensitive(),
+        "unknown": app.unknown_banner.get_revealed(),
+        "unknown_title": app.unknown_banner.get_title(),
+        "unknown_button": app.unknown_banner.get_button_label(),
+        "unknown_markup": app.unknown_banner.get_use_markup(),
+        "rollback": app.rollback_banner.get_revealed(),
+        # 2 つの警告が同じ並びにあり、rollback の警告のすぐ下に unknown の警告がある
+        "banner_order": (app.unknown_banner.get_parent() is top_bars
+                         and app.rollback_banner.get_next_sibling() is app.unknown_banner),
+        "toasts": list(app.test_toasts),
+        "log": app.test_log.getvalue(),
+        "settings": settings_snapshot(),
+    }
+
+
+class UnknownScenarioTestCase(GuiScenarioTestCase):
+    READER = None
+    INJECTOR = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.display = display_available()
+        if cls.display:
+            cls.READER.mode = cls.READER.start_mode
+            if cls.INJECTOR is not None:
+                cls.INJECTOR.install()
+            try:
+                cls.results, cls.failure = run_scenario(cls.STEPS, view_fn=unknown_view, state_reader=cls.READER.read)
+            finally:
+                if cls.INJECTOR is not None:
+                    cls.INJECTOR.uninstall()
+
+    def state(self, label):
+        self.assertIsNone(self.failure)
+        self.assertIn(label, self.results)
+        return self.results[label][0]
+
+    def assertUnknownShown(self, s):
+        self.assertEqual(s["current"], "unknown")
+        self.assertIs(s["unknown"], True)
+        self.assertEqual(s["badges"], [])
+        self.assertIs(s["notice"], False)
+        self.assertIs(s["apply"], False)
+
+    def assertNoDetailOnScreen(self, s):
+        for toast in s["toasts"]:
+            self.assertNotIn(SECRET_DETAIL, toast)
+            self.assertNotIn("RuntimeError", toast)
+
+
+NORMAL_READER = ReaderControl()
+
+
+class GuiNormalLayoutsNoUnknownTest(UnknownScenarioTestCase):
+    """1: 正常な 4 レイアウトでは、従来どおり「使用中」を出し、unknown の警告は出さない"""
+
+    READER = NORMAL_READER
+    STEPS = (check("original"),
+             click("windows10"), PRESS, check("windows10"),
+             click("windows11"), PRESS, check("windows11"),
+             click("macos"), PRESS, check("macos"),
+             click("original"), PRESS, check("original again"))
+
+    def test_k1_normal_layouts(self):
+        for label, layout_id in (("original", "original"), ("windows10", "windows10"), ("windows11", "windows11"),
+                                 ("macos", "macos"), ("original again", "original")):
+            with self.subTest(label):
+                s = self.state(label)
+                self.assertEqual((s["current"], s["badges"], s["active"]), (layout_id, [layout_id], [layout_id]))
+                self.assertIs(s["unknown"], False)
+                self.assertIs(s["notice"], False)
+                self.assertIs(s["apply"], False)
+        self.assertEqual(self.state("original again")["toasts"],
+                         ["Applied Windows 10.", "Applied Windows 11.", "Applied macOS.", "Applied oYo Original."])
+
+    def test_k2_unknown_banner_widget(self):
+        s = self.state("original")
+        self.assertEqual(s["unknown_title"], MSG_UNKNOWN)
+        self.assertEqual(s["unknown_button"], "Check Again")
+        self.assertIs(s["unknown_markup"], False)
+        self.assertIs(s["banner_order"], True)
+
+
+CUSTOM_READER = ReaderControl("custom")
+
+
+class GuiNormalCustomTest(UnknownScenarioTestCase):
+    """2: 読めた値がどれにも一致しない（正常な custom）は、従来どおり Custom の案内を出し、Apply できる"""
+
+    READER = CUSTOM_READER
+    STEPS = (check("start"), click("original"), check("original selected"), CUSTOM_READER.set(None))
+
+    def test_k3_custom_is_not_unknown(self):
+        s = self.state("start")
+        self.assertEqual(s["current"], "custom")
+        self.assertIs(s["notice"], True)
+        self.assertIs(s["unknown"], False)
+        self.assertEqual((s["badges"], s["active"], s["apply"]), ([], [], False))
+        s = self.state("original selected")
+        self.assertIs(s["apply"], True)
+        self.assertIs(s["unknown"], False)
+
+
+STARTUP_READER = ReaderControl("raise")
+
+
+class GuiStartupUnknownTest(UnknownScenarioTestCase):
+    """3〜8: 起動時に読み取れない → Apply 禁止 → 再確認（失敗・失敗・成功）→ 選択を保持して回復"""
+
+    READER = STARTUP_READER
+    STEPS = (check("start"),
+             click("macos"), check("card selected"),
+             PRESS, check("press refused"),
+             call(lambda a: a.on_apply_clicked(a.apply_button)), check("direct call refused"),
+             CHECK_AGAIN, check("check again failed"),
+             STARTUP_READER.set("shell"), CHECK_AGAIN, check("check again failed (shell)"),
+             STARTUP_READER.set(None), CHECK_AGAIN, check("recovered"),
+             PRESS, check("applied after recovery"))
+
+    def test_k4_startup_unknown_shows_banner(self):
+        s = self.state("start")
+        self.assertUnknownShown(s)
+        self.assertEqual((s["selected"], s["active"]), (None, []))
+        self.assertIs(s["rollback"], False)
+        self.assertEqual(s["toasts"], [])
+        # 詳細はログにだけ残す
+        self.assertIn(SECRET_DETAIL, s["log"])
+        self.assertIn("Traceback", s["log"])
+
+    def test_k5_card_selection_keeps_apply_disabled(self):
+        s = self.state("card selected")
+        self.assertUnknownShown(s)
+        self.assertEqual((s["selected"], s["active"]), ("macos", ["macos"]))
+
+    def test_k6_apply_event_does_not_write(self):
+        start = self.state("start")
+        for label in ("press refused", "direct call refused"):
+            with self.subTest(label):
+                s = self.state(label)
+                self.assertUnknownShown(s)
+                self.assertEqual(s["settings"], start["settings"])
+                self.assertEqual(s["toasts"], [])
+                self.assertEqual(s["rollback"], False)
+        self.assertIn("refused because the current layout is unknown", self.state("direct call refused")["log"])
+
+    def test_k7_check_again_failure_keeps_unknown(self):
+        start = self.state("start")
+        s = self.state("check again failed")
+        self.assertUnknownShown(s)
+        self.assertEqual(s["toasts"], [MSG_STILL])
+        self.assertEqual(s["settings"], start["settings"])
+        self.assertNoDetailOnScreen(s)
+        s = self.state("check again failed (shell)")
+        self.assertUnknownShown(s)
+        self.assertEqual(s["toasts"], [MSG_STILL, MSG_STILL])
+        self.assertEqual(s["settings"], start["settings"])
+        self.assertIn("shell enabled-extensions could not be read", s["log"])
+
+    def test_k8_check_again_success_recovers_and_keeps_selection(self):
+        s = self.state("recovered")
+        self.assertEqual(s["current"], "original")
+        self.assertEqual(s["badges"], ["original"])
+        self.assertIs(s["unknown"], False)
+        self.assertIs(s["notice"], False)
+        # 選んでいた macOS はそのまま。今と違うので Apply できる。成功したときはトーストを出さない
+        self.assertEqual((s["selected"], s["active"]), ("macos", ["macos"]))
+        self.assertIs(s["apply"], True)
+        self.assertEqual(s["toasts"], [MSG_STILL, MSG_STILL])
+        s = self.state("applied after recovery")
+        self.assertEqual((s["current"], s["badges"], s["apply"]), ("macos", ["macos"], False))
+        self.assertEqual(s["toasts"][-1], "Applied macOS.")
+
+
+AUTOSELECT_READER = ReaderControl("raise")
+
+
+class GuiStartupUnknownAutoSelectTest(UnknownScenarioTestCase):
+    """8: カードを選んでいなければ、再確認で確認できたときに使用中のカードを選ぶ"""
+
+    READER = AUTOSELECT_READER
+    STEPS = (check("start"), AUTOSELECT_READER.set(None), CHECK_AGAIN, check("recovered"))
+
+    def test_k9_unselected_card_is_selected_on_recovery(self):
+        self.assertEqual(self.state("start")["active"], [])
+        s = self.state("recovered")
+        self.assertEqual((s["current"], s["selected"], s["active"], s["badges"]),
+                         ("original", "original", ["original"], ["original"]))
+        self.assertIs(s["unknown"], False)
+        self.assertIs(s["apply"], False)
+        self.assertEqual(s["toasts"], [])
+
+
+BOTH_READER = ReaderControl()
+BOTH_INJECTOR = FailureInjector()
+
+
+class GuiUnknownWithRollbackBannerTest(UnknownScenarioTestCase):
+    """
+    9〜13: Apply の後の読み直しで確認できない（読み取りの失敗）→ unknown。
+    rollback の警告とは独立に出し入れし、再確認でも rollback の警告は消さない
+    """
+
+    READER = BOTH_READER
+    INJECTOR = BOTH_INJECTOR
+    STEPS = (check("start"),
+             # 11: Apply 成功後の読み直しで確認できない
+             BOTH_READER.set("raise"), click("windows10"), PRESS, check("success, unknown"),
+             BOTH_READER.set(None), CHECK_AGAIN, check("checked 1"),
+             # 12: ApplyWriteError 後の読み直しで確認できない
+             BOTH_INJECTOR.mode_step("write"), BOTH_READER.set("raise"), click("macos"), PRESS,
+             check("write error, unknown"),
+             BOTH_INJECTOR.mode_step(None), BOTH_READER.set(None), CHECK_AGAIN, check("checked 2"),
+             # 13: rollback の失敗と読み直しの失敗が重なる（Original から macOS）
+             click("original"), PRESS, check("original"),
+             BOTH_INJECTOR.mode_step("rollback"), BOTH_READER.set("raise"), click("macos"), PRESS,
+             check("both banners"),
+             BOTH_INJECTOR.mode_step(None), click("original"), check("card selected while unknown"),
+             CHECK_AGAIN, check("still unknown, rollback kept"),
+             # 10: 再確認で確認できても、rollback の警告は残る
+             BOTH_READER.set(None), CHECK_AGAIN, check("checked, rollback kept"),
+             # rollback の警告を閉じても unknown には影響しない（逆も同じ）
+             BOTH_INJECTOR.mode_step("rollback"), BOTH_READER.set("raise"), click("macos"), PRESS,
+             check("both banners again"),
+             call(lambda a: a.rollback_banner.emit("button-clicked")), check("rollback dismissed while unknown"),
+             BOTH_INJECTOR.mode_step(None), BOTH_READER.set(None), CHECK_AGAIN, click("original"), PRESS,
+             check("applied"))
+
+    def test_k10_success_then_unknown(self):
+        start, s = self.state("start"), self.state("success, unknown")
+        self.assertNotEqual(s["settings"], start["settings"])  # 書き込みは成功している
+        self.assertUnknownShown(s)
+        self.assertEqual(s["toasts"], [MSG_B])
+        self.assertIs(s["rollback"], False)
+        checked = self.state("checked 1")
+        self.assertEqual((checked["current"], checked["badges"], checked["unknown"]), ("windows10", ["windows10"], False))
+
+    def test_k11_write_error_then_unknown(self):
+        before, s = self.state("checked 1"), self.state("write error, unknown")
+        self.assertUnknownShown(s)
+        self.assertEqual(s["toasts"], before["toasts"] + ["Failed to write dock-position", MSG_B])
+        self.assertIs(s["rollback"], False)
+        self.assertEqual(s["settings"], before["settings"])  # 書き込みの失敗は元に戻っている
+
+    def test_k12_rollback_failure_and_unknown_show_both(self):
+        before, s = self.state("original"), self.state("both banners")
+        self.assertEqual(before["current"], "original")
+        self.assertUnknownShown(s)
+        self.assertIs(s["rollback"], True)
+        self.assertIs(s["banner_order"], True)
+        self.assertEqual(s["toasts"], before["toasts"] + [MSG_B])
+        # unknown のあいだはカードを選んでも Apply できず、どちらの警告も消えない
+        s = self.state("card selected while unknown")
+        self.assertUnknownShown(s)
+        self.assertIs(s["rollback"], True)
+        s = self.state("still unknown, rollback kept")
+        self.assertUnknownShown(s)
+        self.assertIs(s["rollback"], True)
+        self.assertEqual(s["toasts"][-1], MSG_STILL)
+
+    def test_k13_check_again_keeps_rollback_banner(self):
+        before, s = self.state("still unknown, rollback kept"), self.state("checked, rollback kept")
+        self.assertIs(s["unknown"], False)
+        self.assertIs(s["rollback"], True)
+        self.assertEqual(s["current"], "custom")  # 一部が戻らなかったので custom（読めたうえでの判定）
+        self.assertIs(s["notice"], True)
+        self.assertEqual((s["selected"], s["apply"]), ("original", True))
+        self.assertEqual(s["toasts"], before["toasts"])
+
+    def test_k14_banners_are_independent(self):
+        s = self.state("both banners again")
+        self.assertIs(s["rollback"], True)
+        self.assertIs(s["unknown"], True)
+        s = self.state("rollback dismissed while unknown")
+        self.assertIs(s["rollback"], False)
+        self.assertUnknownShown(s)
+        s = self.state("applied")
+        self.assertEqual((s["current"], s["rollback"], s["unknown"]), ("original", False, False))
+        self.assertEqual(s["toasts"][-1], "Applied oYo Original.")
 
 
 if __name__ == "__main__":

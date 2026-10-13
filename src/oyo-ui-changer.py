@@ -196,12 +196,23 @@ def print_state(state):
 #   - 構造を決める主要キーだけで判定し、細かな調整（サイズ、ArcMenu の形、button-layout など）は見ない
 #   - dconf の生の値は使わず、read_current_state() の "value" だけを使う
 #   - 判定に必要な値が分からない、またはどれにも一致しない場合は custom
+#   - ただし assess_layout() は、判定に必要な値が読めない・想定外の例外が起きた場合を custom と区別して unknown にする
+#     （unreadable_reason() で先に確かめるので、detect_layout() に unknown の状態は渡らない）
 #----------------------------------------------------------------------------------------------------------------
 LAYOUT_ORIGINAL = "original"
 LAYOUT_WINDOWS10 = "windows10"
 LAYOUT_WINDOWS11 = "windows11"
 LAYOUT_MACOS = "macos"
 LAYOUT_CUSTOM = "custom"
+# 状態を確認できない（読み取りの失敗・想定外の例外）。custom とは別に扱う
+LAYOUT_UNKNOWN = "unknown"
+
+# 判定に必要な値（shell は常に必要。Extension の値は、その Extension が有効なときだけ必要）
+REQUIRED_SHELL_KEYS = ("enabled-extensions", "disabled-extensions", "disable-user-extensions")
+REQUIRED_EXTENSION_KEYS = (
+    ("dash-to-dock", ("dock-position",)),
+    ("dash-to-panel", ("panel-positions", "panel-element-positions")),
+)
 
 MIXED = "mixed"
 
@@ -326,6 +337,28 @@ def detect_layout(state):
     return LAYOUT_CUSTOM
 
 
+def unreadable_reason(state):
+    """
+    判定に必要な値が読めていなければ、その理由（ログ用の英語）を返す。読めていれば None。
+    Extension が未インストール・無効なら、その Extension の値は不要（読めなくても理由にしない）。
+    読めた値の中身（壊れた JSON など）は見ない（それは detect_layout() / confirm_layout() で custom にする）
+    """
+    if not isinstance(state, dict):
+        return "the state is not a dictionary"
+    for key in REQUIRED_SHELL_KEYS:
+        if state_value(state, "shell", key) is None:
+            return f"shell {key} could not be read"
+    for name, keys in REQUIRED_EXTENSION_KEYS:
+        entry = state.get(name)
+        if not isinstance(entry, dict) or entry.get("uuid") is None:
+            return f"the {name} state is missing"
+        if extension_enabled(state, name):
+            for key in keys:
+                if state_value(state, name, key) is None:
+                    return f"{name} {key} could not be read"
+    return None
+
+
 #----------------------------------------------------------------------------------------------------------------
 # レイアウトの適用（oYo Original / Windows 10 / Windows 11 / macOS）
 #   - 書き込むのは、目標値と今の値が違うキーだけ
@@ -356,6 +389,10 @@ MSG_ROLLBACK_INCOMPLETE = N_(
 MSG_UNEXPECTED_APPLY_ERROR = N_("The layout could not be applied because of an unexpected error.")
 # 表示の読み直し（現在のレイアウトの再確認）に失敗したとき
 MSG_LAYOUT_CHECK_FAILED = N_("The current layout could not be checked. The display may not match your desktop.")
+# 現在のレイアウトを確認できない（unknown）あいだの消えない警告とそのボタン、再確認でも確認できなかったとき
+MSG_LAYOUT_UNKNOWN = N_("The current layout could not be checked. Layouts cannot be applied until it is checked.")
+MSG_CHECK_AGAIN = N_("Check Again")
+MSG_LAYOUT_STILL_UNKNOWN = N_("The current layout still could not be checked.")
 
 # dash-to-panel の panel-* が空のときに使う鍵（1台目のモニター。dash-to-panel が後でモニター ID に置き換える）
 PANEL_FALLBACK_MONITOR = "0"
@@ -694,18 +731,38 @@ def plan_layout(layout_id):
 def confirm_layout(candidate):
     """
     detect_layout() の候補が、そのレイアウトの管理対象の設定と完全に一致しているか確かめる（書き込みはしない）。
-    候補の plan_layout() の変更予定が 0 件なら候補を、1 件以上・計画を作れない・候補が custom / 不明なら custom を返す。
-    ほかのレイアウトは調べない
+    候補の plan_layout() の変更予定が 0 件なら候補を、1 件以上・事前確認の失敗（ApplyError）・候補が custom / 不明なら
+    custom を、計画の途中で想定外の例外が起きたら unknown を返す。ほかのレイアウトは調べない
     """
     if candidate not in LAYOUT_PLANNERS:
         return LAYOUT_CUSTOM
     try:
         plan = plan_layout(candidate)
-    except Exception:  # 事前確認の失敗（ApplyError）も想定外の例外も、一致を確かめられないので custom
+    except ApplyError:  # 事前確認の失敗: 管理対象の設定がそのレイアウトの状態ではないので custom
         return LAYOUT_CUSTOM
+    except Exception:  # 想定外の例外: 一致しているかどうかを確かめられないので unknown
+        return LAYOUT_UNKNOWN
     if any(changes for _settings, changes in plan):
         return LAYOUT_CUSTOM
     return candidate
+
+
+def assess_layout(state_reader=read_current_state):
+    """
+    設定の読み取りから判定までをまとめて行い、(レイアウト, unknown の理由 or None) を返す（書き込みはしない）。
+    判定に必要な値が読めない・判定中に想定外の例外が起きた場合は (unknown, 理由)。例外は外に出さない
+    """
+    try:
+        state = state_reader()
+        reason = unreadable_reason(state)
+        if reason is not None:
+            return LAYOUT_UNKNOWN, reason
+        layout = confirm_layout(detect_layout(state))
+    except Exception:
+        return LAYOUT_UNKNOWN, "unexpected error:\n" + traceback.format_exc()
+    if layout == LAYOUT_UNKNOWN:
+        return LAYOUT_UNKNOWN, "the layout could not be confirmed because of an unexpected error"
+    return layout, None
 
 
 def rollback(written):
@@ -923,7 +980,8 @@ class OyoUiChangerApp(Adw.Application):
         super().__init__(application_id="org.openyellowos.OyoUiChanger")
         self.state_reader = state_reader
         # current_layout: 今の GNOME の状態（判定結果）、selected_layout: カードで選んでいるもの
-        self.current_layout = None
+        # 判定するまでは unknown（判定の前に起動処理が止まっても、Apply できないようにする）
+        self.current_layout = LAYOUT_UNKNOWN
         self.selected_layout = None
         self.cards = {}
         self.current_badges = {}
@@ -932,6 +990,7 @@ class OyoUiChangerApp(Adw.Application):
         self.apply_button = None
         self.toast_overlay = None
         self.rollback_banner = None
+        self.unknown_banner = None
         self.connect("activate", self.on_activate)
         self.connect("startup", self.on_startup)
 
@@ -943,16 +1002,28 @@ class OyoUiChangerApp(Adw.Application):
         )
 
         # 起動時に現在の設定を読み取り、今のレイアウトを判定する（read-only）
-        # 管理対象の設定が手で変えられていれば custom（confirm_layout）
+        # 管理対象の設定が手で変えられていれば custom（confirm_layout）、確認できなければ unknown
+        self.current_layout = self.assess_current_layout(log_state=True)
+
+    def read_state_with_log(self):
+        """設定を読み取り、確認用にログへ出す（起動時の assess_layout() に渡す）"""
         state = self.state_reader()
         print_state(state)
         print(f"=== layout facts: {layout_facts(state)}")
-        self.current_layout = confirm_layout(detect_layout(state))
-        print(f"=== current layout: {self.current_layout}")
+        return state
+
+    def assess_current_layout(self, log_state=False):
+        """今のレイアウトを判定して返す（例外は出さない）。確認できなければ unknown で、理由はログにだけ残す"""
+        layout, reason = assess_layout(self.read_state_with_log if log_state else self.state_reader)
+        if reason is not None:
+            print(f"Could not check the current layout: {reason}")
+        print(f"=== current layout: {layout}")
+        return layout
 
     def update_apply_button(self):
-        # 今の状態と違うレイアウトを選んでいるときだけ Apply を押せるようにする
-        changed = self.selected_layout is not None and self.selected_layout != self.current_layout
+        # 今の状態と違うレイアウトを選んでいるときだけ Apply を押せるようにする（unknown のあいだは押せない）
+        changed = (self.current_layout != LAYOUT_UNKNOWN
+                   and self.selected_layout is not None and self.selected_layout != self.current_layout)
         self.apply_button.set_sensitive(changed)
 
     def on_layout_toggled(self, card, layout_id, check_icon):
@@ -967,28 +1038,54 @@ class OyoUiChangerApp(Adw.Application):
         print(message)
         self.toast_overlay.add_toast(Adw.Toast(title=message))
 
-    def refresh_current_layout(self):
-        """設定を読み直して current_layout と表示を更新する"""
-        self.current_layout = confirm_layout(detect_layout(self.state_reader()))
+    def show_layout(self, layout):
+        """current_layout と表示（使用中の印・Custom の案内・unknown の警告・Apply）を合わせる"""
+        self.current_layout = layout
         for layout_id, badge in self.current_badges.items():
-            badge.set_visible(layout_id == self.current_layout)
-        self.custom_notice.set_visible(self.current_layout == LAYOUT_CUSTOM)
+            badge.set_visible(layout_id == layout)
+        self.custom_notice.set_visible(layout == LAYOUT_CUSTOM)
+        # unknown の警告は、確認できたときだけ消える（rollback の警告とは別に扱う）
+        self.unknown_banner.set_revealed(layout == LAYOUT_UNKNOWN)
         self.update_apply_button()
 
-    def safe_refresh(self):
+    def refresh_current_layout(self):
+        """設定を読み直して current_layout と表示を更新する（確認できなければ unknown）"""
+        self.show_layout(self.assess_current_layout())
+
+    def recheck_layout(self):
         """
-        refresh_current_layout() を行い、成功したら True。失敗したらログに残してトーストで知らせ、False を返す
-        （表示は前のまま。根拠なく custom にはしない）
+        refresh_current_layout() を行い、確認できたら True。確認できない・例外のときは unknown にして False
+        （古い「使用中」を残さない。根拠なく custom にもしない。例外の詳細はログへ）
         """
         try:
             self.refresh_current_layout()
         except Exception:
             print("Could not refresh the current layout:\n" + traceback.format_exc(), end="")
-            self.show_toast(_(MSG_LAYOUT_CHECK_FAILED))
-            return False
-        return True
+            self.current_layout = LAYOUT_UNKNOWN  # 表示の更新が途中で失敗しても、Apply は拒否される
+            self.show_layout(LAYOUT_UNKNOWN)
+        return self.current_layout != LAYOUT_UNKNOWN
+
+    def safe_refresh(self):
+        """Apply の後の読み直し。確認できたら True。確認できなければ unknown にし、トーストで知らせて False"""
+        if self.recheck_layout():
+            return True
+        self.show_toast(_(MSG_LAYOUT_CHECK_FAILED))
+        return False
+
+    def on_check_again_clicked(self, _banner):
+        """unknown の警告の「再確認」: 確認できれば表示を戻す。rollback の警告には触れない"""
+        if not self.recheck_layout():
+            self.show_toast(_(MSG_LAYOUT_STILL_UNKNOWN))
+            return
+        # 何も選んでいなければ、使用中のカードを選ぶ（起動時と同じ。選んでいればそのまま）
+        if self.selected_layout is None and self.current_layout in self.cards:
+            self.cards[self.current_layout].set_active(True)
 
     def on_apply_clicked(self, button):
+        if self.current_layout == LAYOUT_UNKNOWN:
+            # 今の状態を確認できないので書き込まない（ボタンは押せないが、イベントが届いても拒否する）
+            print(f"Apply: {self.selected_layout} refused because the current layout is unknown")
+            return
         layout_id = self.selected_layout
         name = LAYOUT_NAMES.get(layout_id, layout_id)
         if layout_id not in LAYOUT_PLANNERS:
@@ -1132,9 +1229,16 @@ class OyoUiChangerApp(Adw.Application):
                                           use_markup=False, revealed=False)
         self.rollback_banner.connect("button-clicked", lambda banner: banner.set_revealed(False))
 
+        # 現在のレイアウトを確認できない（unknown）あいだ出す、消えない警告。「再確認」で確認できたときだけ消える
+        self.unknown_banner = Adw.Banner(title=_(MSG_LAYOUT_UNKNOWN), button_label=_(MSG_CHECK_AGAIN),
+                                         use_markup=False, revealed=self.current_layout == LAYOUT_UNKNOWN)
+        self.unknown_banner.connect("button-clicked", self.on_check_again_clicked)
+
+        # rollback の警告を上、unknown の警告を下に置く（それぞれ独立に出し入れする）
         toolbar_view = Adw.ToolbarView(content=self.toast_overlay)
         toolbar_view.add_top_bar(Adw.HeaderBar())
         toolbar_view.add_top_bar(self.rollback_banner)
+        toolbar_view.add_top_bar(self.unknown_banner)
         toolbar_view.add_bottom_bar(bottom_bar)
 
         window.set_content(toolbar_view)

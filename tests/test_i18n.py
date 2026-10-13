@@ -2,13 +2,14 @@
 日本語翻訳（po/ja.po）のテスト
 
   - msgfmt --check で翻訳ファイルを一時ディレクトリにコンパイルできる（リポジトリには .mo を作らない）
-  - POT の 21 件すべてに日本語訳があり、空訳・fuzzy がない
+  - POT の 24 件すべてに日本語訳があり、空訳・fuzzy がない（以前からの 21 件は訳を変えていない）
   - 差し込み（{name} など）が英語原文と一致し、値を差し込める
   - gettext で読み込むと日本語訳が得られ、未翻訳は英語のまま
   - アプリの表示文言は、そのテストの間だけ ns["_translation"] を差し替えたときだけ日本語になる
     （helpers は英語に固定しているので、ほかのテストには影響しない）
   - POT がソースと一致している（XGETTEXT_COMMAND で作り直して比べる）
   - rollback が不完全なときの警告（Banner）が、GUI で日本語の本文と「閉じる」ボタンで表示される
+  - 現在のレイアウトを確認できないときの警告（Banner）・「再確認」ボタン・再確認の失敗のトーストが、GUI で日本語になる
 msgfmt がなければ skip する（xgettext・画面がなければ、そのテストだけ skip）。
 実行: python3 -m unittest discover -s tests -v
 """
@@ -28,7 +29,7 @@ from helpers import REPO_DIR, load_app
 DOMAIN = "oyo-ui-changer"
 POT = os.path.join(REPO_DIR, "po", "oyo-ui-changer.pot")
 JA_PO = os.path.join(REPO_DIR, "po", "ja.po")
-EXPECTED_COUNT = 21
+EXPECTED_COUNT = 24
 # POT を作るコマンド（po/oyo-ui-changer.pot はこのコマンドで作り直す）
 XGETTEXT_COMMAND = ["xgettext", "--language=Python", "--from-code=UTF-8", "--keyword=_", "--keyword=N_",
                     "--add-location=file", "--package-name=oyo-ui-changer"]
@@ -36,6 +37,9 @@ APP_SOURCE = os.path.join(REPO_DIR, "src", "oyo-ui-changer.py")
 BANNER_JA = "レイアウトの適用に失敗し、一部の設定を元に戻せませんでした。デスクトップの設定が変更されたままの可能性があります。レイアウトを選び直して、再度適用すると改善する場合があります。"
 UNEXPECTED_JA = "予期しないエラーのため、レイアウトを適用できませんでした。"
 CHECK_FAILED_JA = "現在のレイアウトを確認できませんでした。表示が実際のデスクトップと異なる可能性があります。"
+UNKNOWN_JA = "現在のレイアウトを確認できませんでした。確認できるまで、レイアウトは適用できません。"
+CHECK_AGAIN_JA = "再確認"
+STILL_UNKNOWN_JA = "現在のレイアウトを、まだ確認できません。"
 
 # 確定した日本語の文言
 CONFIRMED = {
@@ -54,6 +58,26 @@ CONFIRMED = {
     "Dismiss": "閉じる",
     "The layout could not be applied because of an unexpected error.": UNEXPECTED_JA,
     "The current layout could not be checked. The display may not match your desktop.": CHECK_FAILED_JA,
+    "The current layout could not be checked. Layouts cannot be applied until it is checked.": UNKNOWN_JA,
+    "Check Again": CHECK_AGAIN_JA,
+    "The current layout still could not be checked.": STILL_UNKNOWN_JA,
+}
+# 今回（現在のレイアウトを確認できないとき）追加した 3 件
+NEW_MSGIDS = (
+    "The current layout could not be checked. Layouts cannot be applied until it is checked.",
+    "Check Again",
+    "The current layout still could not be checked.",
+)
+# 以前からの 21 件のうち、CONFIRMED にないもの（訳を変えていないことを確かめる）
+EARLIER_OTHERS = {
+    "Settings schema not found: {schema}": "設定スキーマが見つかりません: {schema}",
+    "Setting not found: {schema} {key}": "設定項目が見つかりません: {schema} {key}",
+    "Setting is not writable: {schema} {key}": "設定項目に書き込めません: {schema} {key}",
+    "Invalid value for {schema} {key}": "設定値が正しくありません: {schema} {key}",
+    "Could not read dash-to-panel setting: {key}": "dash-to-panel の設定を読み取れませんでした: {key}",
+    "Not implemented yet.": "まだ実装されていません。",
+    "Failed to write {key}": "{key} の書き込みに失敗しました",
+    "Failed to apply the layout: {error}": "レイアウトの適用に失敗しました: {error}",
 }
 # 訳文にもそのまま残すべき技術的な語
 TECHNICAL_TERMS = ("GNOME Shell", "dash-to-panel")
@@ -89,6 +113,18 @@ def read_po(path):
 
 def placeholders(text):
     return {field for _literal, field, _spec, _conv in string.Formatter().parse(text) if field is not None}
+
+
+def widget_texts(widget):
+    """widget とその中に表示されている Label / Button の文字列"""
+    from gi.repository import Gtk  # GUI のテストだけで使う（helpers を読み込んだあと）
+    found, child = [], widget.get_first_child()
+    if isinstance(widget, (Gtk.Label, Gtk.Button)) and widget.get_label():
+        found.append(widget.get_label())
+    while child:
+        found += widget_texts(child)
+        child = child.get_next_sibling()
+    return found
 
 
 def run_tool(args):
@@ -183,10 +219,15 @@ class JapaneseTranslationTest(unittest.TestCase):
         # GUI の例外通知の文言（アプリの定数を翻訳して得る）
         self.assertEqual(ns["_"](ns["MSG_UNEXPECTED_APPLY_ERROR"]), UNEXPECTED_JA)
         self.assertEqual(ns["_"](ns["MSG_LAYOUT_CHECK_FAILED"]), CHECK_FAILED_JA)
+        # 現在のレイアウトを確認できないときの文言
+        self.assertEqual(ns["_"](ns["MSG_LAYOUT_UNKNOWN"]), UNKNOWN_JA)
+        self.assertEqual(ns["_"](ns["MSG_CHECK_AGAIN"]), CHECK_AGAIN_JA)
+        self.assertEqual(ns["_"](ns["MSG_LAYOUT_STILL_UNKNOWN"]), STILL_UNKNOWN_JA)
 
         ns["_translation"] = english
         self.assertEqual(ns["_"]("Current"), "Current")
-        self.assertEqual(ns["_"](ns["MSG_UNEXPECTED_APPLY_ERROR"]), ns["MSG_UNEXPECTED_APPLY_ERROR"])
+        for name in ("MSG_UNEXPECTED_APPLY_ERROR", "MSG_LAYOUT_UNKNOWN", "MSG_CHECK_AGAIN", "MSG_LAYOUT_STILL_UNKNOWN"):
+            self.assertEqual(ns["_"](ns[name]), ns[name])
 
     @unittest.skipUnless(shutil.which("xgettext"), "xgettext (gettext) is not installed")
     def test_11_pot_matches_source(self):
@@ -201,21 +242,13 @@ class JapaneseTranslationTest(unittest.TestCase):
         import test_gui  # GUI の仕組みはこのテストだけで使う（画面がなければ skip）
         if not test_gui.display_available():
             self.skipTest("no display connection")
-        gns, Gtk = test_gui.ns, test_gui.Gtk
-
-        def texts(widget):
-            found, child = [], widget.get_first_child()
-            if isinstance(widget, (Gtk.Label, Gtk.Button)) and widget.get_label():
-                found.append(widget.get_label())
-            while child:
-                found += texts(child)
-                child = child.get_next_sibling()
-            return found
+        gns = test_gui.ns
 
         def banner_state(app):
             banner = app.rollback_banner
             return {"revealed": banner.get_revealed(), "title": banner.get_title(), "button": banner.get_button_label(),
-                    "shown_texts": texts(banner), "apply": app.apply_button.get_label(), "toasts": list(app.test_toasts)}
+                    "shown_texts": widget_texts(banner), "apply": app.apply_button.get_label(),
+                    "toasts": list(app.test_toasts)}
 
         english = gns["_translation"]
         gns["_translation"] = self.japanese()
@@ -242,6 +275,66 @@ class JapaneseTranslationTest(unittest.TestCase):
         self.assertEqual(after["toasts"], start["toasts"])
         # 差し替えを戻したので、以後のアプリは英語
         self.assertEqual(gns["_"]("Dismiss"), "Dismiss")
+
+    def test_13_earlier_translations_kept(self):
+        # 以前からの 21 件は訳を変えず、今回の 3 件だけを加えた
+        earlier = {msgid: msgstr for msgid, msgstr in CONFIRMED.items() if msgid not in NEW_MSGIDS}
+        earlier.update(EARLIER_OTHERS)
+        self.assertEqual(len(earlier), EXPECTED_COUNT - len(NEW_MSGIDS))
+        self.assertEqual(set(self.translations), set(earlier) | set(NEW_MSGIDS))
+        for msgid, msgstr in earlier.items():
+            with self.subTest(msgid=msgid):
+                self.assertEqual(self.translations[msgid], msgstr)
+
+    def test_14_japanese_unknown_banner_in_gui(self):
+        import test_gui  # GUI の仕組みはこのテストだけで使う（画面がなければ skip）
+        if not test_gui.display_available():
+            self.skipTest("no display connection")
+        gns = test_gui.ns
+        reader = test_gui.ReaderControl("raise")
+
+        def unknown_state(app):
+            unknown, rollback = app.unknown_banner, app.rollback_banner
+            return {"current": app.current_layout, "revealed": unknown.get_revealed(), "title": unknown.get_title(),
+                    "button": unknown.get_button_label(), "shown_texts": widget_texts(unknown),
+                    "rollback_revealed": rollback.get_revealed(), "rollback_title": rollback.get_title(),
+                    "rollback_button": rollback.get_button_label(), "apply": app.apply_button.get_label(),
+                    "toasts": list(app.test_toasts)}
+
+        english = gns["_translation"]
+        gns["_translation"] = self.japanese()
+        try:
+            results, failure = test_gui.run_scenario(
+                (test_gui.check("start"), test_gui.CHECK_AGAIN, test_gui.check("still unknown"),
+                 reader.set(None), test_gui.CHECK_AGAIN, test_gui.check("recovered")),
+                view_fn=unknown_state, state_reader=reader.read)
+        finally:
+            gns["_translation"] = english
+
+        self.assertIsNone(failure)
+        start, still, recovered = (results[label][0] for label in ("start", "still unknown", "recovered"))
+        self.assertEqual(start["current"], "unknown")
+        self.assertIs(start["revealed"], True)
+        self.assertEqual(start["title"], UNKNOWN_JA)
+        self.assertEqual(start["button"], CHECK_AGAIN_JA)
+        self.assertIn(UNKNOWN_JA, start["shown_texts"])
+        self.assertIn(CHECK_AGAIN_JA, start["shown_texts"])
+        self.assertEqual(start["toasts"], [])
+        # 再確認の失敗は日本語のトースト。警告は残る
+        self.assertIs(still["revealed"], True)
+        self.assertEqual(still["toasts"], [STILL_UNKNOWN_JA])
+        # 再確認の成功で警告が消える（トーストは出さない）
+        self.assertEqual(recovered["current"], "original")
+        self.assertIs(recovered["revealed"], False)
+        self.assertEqual(recovered["toasts"], [STILL_UNKNOWN_JA])
+        # rollback の警告の日本語は変わらない（出していない）
+        for s in (start, still, recovered):
+            self.assertIs(s["rollback_revealed"], False)
+            self.assertEqual(s["rollback_title"], BANNER_JA)
+            self.assertEqual(s["rollback_button"], "閉じる")
+            self.assertEqual(s["apply"], "適用")
+        # 差し替えを戻したので、以後のアプリは英語
+        self.assertEqual(gns["_"]("Check Again"), "Check Again")
 
 
 if __name__ == "__main__":
